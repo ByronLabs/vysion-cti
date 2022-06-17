@@ -1,0 +1,1 @@
+- [ ] Mejorar misp_object.add_reference

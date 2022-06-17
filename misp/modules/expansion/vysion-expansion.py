@@ -1,23 +1,115 @@
 import json
+from typing import List
+from attr import attr, attrib
 from pymisp import MISPAttribute, MISPEvent, MISPObject
 from urllib.parse import urlparse
 
+import logging
+
 import vysion.client as vysion
+import vysion.model as model
 
 misperrors = {'error': 'Error'}
-mispattributes = {'input': ['hostname', 'domain', "ip-src", "ip-dst", "md5", "sha1", "sha256", "url"],
+mispattributes = {'input': ['email', 'domain', "hostname", "url", "text", "btc", "phone-number"],
                   'format': 'misp_standard'}
 
 # possible module-types: 'expansion', 'hover' or both
-moduleinfo = {'version': '1', 'author': 'ByronLabs',
-              'description': 'Enrich observables with the vysion API',
+moduleinfo = {'version': '1', 'author': 'Byron Labs S.L.',
+              'description': 'Enrich observables with the Vysion API',
               'module-type': ['expansion']}
 
 # config fields that your code expects from the site admin
 moduleconfig = ["apikey", "event_limit", 'proxy_host', 'proxy_port', 'proxy_username', 'proxy_password']
 
+LOGGER = logging.getLogger('vysion')
+LOGGER.setLevel(logging.INFO)
+LOGGER.info("Starting Vysion")
 
 DEFAULT_RESULTS_LIMIT = 10
+
+
+def doit(client: vysion.Client, attribute: dict, limit: int = -1):
+
+    LOGGER.info(attribute)
+
+    misp_event = MISPEvent()
+    misp_attribute: MISPAttribute = MISPAttribute()
+    misp_attribute.from_dict(**attribute)
+    
+    attribute_type = misp_attribute.type
+    attribute_value = misp_attribute.value
+    
+    # https://www.misp-project.org/datamodels/#types
+    
+    results = {}
+    result = None
+
+    LOGGER.info(attribute_type)
+    LOGGER.info(attribute_type)
+    if attribute_type == 'email': 
+        result = client.find_email(attribute_value)
+    elif attribute_type == 'domain': 
+        result = client.search(attribute_value)
+    # elif attribute_type == 'hostname': result = client.search(attribute_value)
+    elif attribute_type == 'url': result = client.find_url(attribute_value)
+    elif attribute_type == 'text': result = client.search(attribute_value)
+    elif attribute_type == 'btc': result = client.search(attribute_value)
+    elif attribute_type == 'phone-number': result = client.search(attribute_value)
+    else:
+        return {'results': results}
+
+    # misp_object = MISPObject('phone-number')
+
+    LOGGER.info("Processing result")
+    LOGGER.info(result.hits[0].page.title)
+
+    for hit in result.hits:
+
+        page: model.Page = hit.page
+
+        misp_object = MISPObject('vysion-page')
+
+        page_id = page.id
+        misp_object.add_attribute('id', type='text', value=page_id)
+
+        url = page.url
+        misp_object.add_attribute('url', type='url', value=url.build())
+        
+        network = url.network
+        misp_object.add_attribute('network', type='text', value=network)
+        
+        # misp_object.add_reference(misp_attribute.uuid, 'associated-to')
+        
+        # TODO Add more page parameters
+
+        misp_event.add_object(misp_object)
+        
+        vysion_reference_id = misp_object.uuid
+
+        misp_event.add_attribute('domain', value=url.domain)
+    
+        for email in hit.email:
+            misp_event.add_attribute('email', value=email.value)
+ 
+
+        for btc in hit.bitcoin_address:
+
+            misp_event.add_attribute('btc', value=btc.value)
+
+
+    result = {
+        'results': {
+            'Object': [json.loads(object.to_json()) for object in misp_event.objects],
+            'Attribute': [json.loads(attribute.to_json()) for attribute in misp_event.attributes]
+        }
+    }
+
+    LOGGER.debug(result)
+
+    return result
+
+    
+
 
 # class VirusTotalParser:
 #     def __init__(self, client: vt.Client, limit: int) -> None:
@@ -222,8 +314,8 @@ def get_proxy_settings(config: dict) -> dict:
 
     if host:
         if not port:
-            misperrors['error'] = 'The virustotal_proxy_host config is set, ' \
-                                  'please also set the virustotal_proxy_port.'
+            misperrors['error'] = 'The vysion_proxy_host config is set, ' \
+                                  'please also set the vysion_proxy_port.'
             raise KeyError
         parsed = urlparse(host)
         if 'http' in parsed.scheme:
@@ -235,8 +327,8 @@ def get_proxy_settings(config: dict) -> dict:
 
         if username:
             if not password:
-                misperrors['error'] = 'The virustotal_proxy_username config is set, ' \
-                                      'please also set the virustotal_proxy_password.'
+                misperrors['error'] = 'The vysion_proxy_username config is set, ' \
+                                      'please also set the vysion_proxy_password.'
                 raise KeyError
             auth = f'{username}:{password}'
             host = auth + '@' + host
@@ -259,7 +351,7 @@ def parse_error(status_code: int) -> str:
     return "Vysion may not be accessible."
 
 def handler(q=False):
-    
+
     if q is False:
         return False
     
@@ -269,7 +361,7 @@ def handler(q=False):
         misperrors['error'] = 'A Vysion api key is required for this module.'
         return misperrors
 
-    if not request.get('attribute') or not check_input_attribute(request['attribute']):
+    if not request.get('attribute'): #  or not check_input_attribute(request['attribute']):
         return {'error': f'{standard_error_message}, which should contain at least a type, a value and an uuid.'}
     
     if request['attribute']['type'] not in mispattributes['input']:
@@ -280,21 +372,27 @@ def handler(q=False):
     proxy_settings = get_proxy_settings(request.get('config'))
 
     try:
-        client = vysion.Client(request['config']['apikey'],
+        
+        client = vysion.Client(api_key=request['config']['apikey'],
                             headers={
                                 'x-tool': 'MISPModuleVysionExpansion',
                             },
                             proxy=proxy_settings['http'] if proxy_settings else None
         )
+        LOGGER.info("Vysion client initialized")
+        result = doit(client, attribute=attribute)
+        LOGGER.info("Vysion result obtained")
+        LOGGER.debug(result)
 
-        parser = VirusTotalParser(client, int(event_limit) if event_limit else None)
-        parser.query_api(attribute)
-
+        return result
+    
     except vysion.APIError as ex:
+        LOGGER.error("Error in Vysion")
+        LOGGER.error(ex)
+
         misperrors['error'] = ex.message
         return misperrors
 
-    return parser.get_result()
 
 
 def introspection():
