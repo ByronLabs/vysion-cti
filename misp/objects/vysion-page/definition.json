@@ -5,7 +5,6 @@
           "External analysis"
         ],
         "description": "Vysion page ID",
-        // "disable_correlation": true,
         "misp-attribute": "text",
         "ui-priority": 1
       },

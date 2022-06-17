@@ -50,8 +50,8 @@ def doit(client: vysion.Client, attribute: dict, limit: int = -1):
         result = client.find_email(attribute_value)
     elif attribute_type == 'domain': 
         result = client.search(attribute_value)
-    elif attribute_type == 'hostname': result = client.search(attribute_value)
-    elif attribute_type == 'url': result = client.search(attribute_value)
+    # elif attribute_type == 'hostname': result = client.search(attribute_value)
+    elif attribute_type == 'url': result = client.find_url(attribute_value)
     elif attribute_type == 'text': result = client.search(attribute_value)
     elif attribute_type == 'btc': result = client.search(attribute_value)
     elif attribute_type == 'phone-number': result = client.search(attribute_value)
@@ -65,7 +65,7 @@ def doit(client: vysion.Client, attribute: dict, limit: int = -1):
 
     for hit in result.hits:
 
-        page = hit.page
+        page: model.Page = hit.page
 
         misp_object = MISPObject('vysion-page')
 
@@ -75,38 +75,40 @@ def doit(client: vysion.Client, attribute: dict, limit: int = -1):
         url = page.url
         misp_object.add_attribute('url', type='url', value=url.build())
         
-        # TODO Add page parameters
+        network = url.network
+        misp_object.add_attribute('network', type='text', value=network)
+        
+        # misp_object.add_reference(misp_attribute.uuid, 'associated-to')
+        
+        # TODO Add more page parameters
 
-        misp_event.add_object(**misp_object)
+        misp_event.add_object(misp_object)
         
         vysion_reference_id = misp_object.uuid
 
-
-        misp_object = MISPObject('domain')
         misp_event.add_attribute('domain', value=url.domain)
-        # misp_object.add_reference(vysion_reference_id, 'vysion-page-id')
-        # misp_event.add_object(misp_object)
-
-
+    
         for email in hit.email:
-            misp_object = MISPObject('email')
             misp_event.add_attribute('email', value=email.value)
-            # misp_object.add_reference(vysion_reference_id, 'vysion-page-id')
-            # misp_event.add_object(misp_object)
-
+ 
 
         for btc in hit.bitcoin_address:
 
-            misp_object = MISPObject('btc')
             misp_event.add_attribute('btc', value=btc.value)
-            # misp_object.add_reference(vysion_reference_id, 'vysion-page-id')
-            # misp_event.add_object(misp_object)
 
-    event = json.loads(misp_event.to_json())
-    LOGGER.info(event)
-    results = {key: event[key] for key in ('Attribute', 'Object') if (key in event and event[key])}
 
-    return {'results': results}
+    result = {
+        'results': {
+            'Object': [json.loads(object.to_json()) for object in misp_event.objects],
+            'Attribute': [json.loads(attribute.to_json()) for attribute in misp_event.attributes]
+        }
+    }
+
+    LOGGER.debug(result)
+
+    return result
+
+    
 
 
 # class VirusTotalParser:
