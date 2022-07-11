@@ -2,6 +2,8 @@
 
 - Expansion modules
 
+Módulos de enriquecimiento
+
 - Import modules: obtener datos de Vysion
 
 Principal
@@ -29,3 +31,4 @@ Deben conar con tres métodos:
 # Referencias
 
 - https://github.com/MISP/misp-modules
+- https://pymisp.readthedocs.io/en/latest/README.html

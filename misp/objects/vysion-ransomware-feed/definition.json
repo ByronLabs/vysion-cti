@@ -1,0 +1,50 @@
+{
+    "attributes": {
+      "id": {
+        "categories": [
+          "External analysis"
+        ],
+        "description": "Feed result ID",
+        "misp-attribute": "text",
+        "ui-priority": 1
+      },
+      "company": {
+        "description": "Affected company",
+        "misp-attribute": "target-org",
+        "ui-priority": 2
+      },
+      "company_link": {
+        "description": "Affected company link",
+        "misp-attribute": "link",
+        "ui-priority": 3
+      },
+      "link": {
+        "description": "Ransomware's leak link",
+        "misp-attribute": "link",
+        "ui-priority": 4
+      },
+      "group": {
+        "description": "Ransomware group",
+        "misp-attribute": "threat-actor",
+        "ui-priority": 5
+      },
+      "date": {
+        "description": "Leak date",
+        "misp-attribute": "date",
+        "ui-priority": 6
+      },
+      "info": {
+        "description": "Leak content",
+        "misp-attribute": "text",
+        "ui-priority": 7
+      }
+    },
+    "description": "Vysion Ransomware feed result",
+    "meta-category": "misc",
+    "name": "vysion-ransomware-feed",
+    "required": [
+      "id"
+    ],
+    "uuid": "e0bfa994-c184-4894-bfaa-73b1350746e1",
+    "version": 10
+}

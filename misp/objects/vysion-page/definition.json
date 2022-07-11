@@ -1,4 +1,12 @@
-{
+{    
+    "description": "Vysion API page",
+    "meta-category": "misc",
+    "name": "vysion-page",
+    "uuid": "4d0b66f1-5268-47e0-9d29-f2e4f3db8e7f",
+    "version": 1,
+    "required": [
+      "id"
+    ],
     "attributes": {
       "id": {
         "categories": [
@@ -17,20 +25,9 @@
         "ui-priority": 2
       },
       "network": {
-        "categories": [
-          "External analysis"
-        ],
         "description": "Page network",
         "misp-attribute": "text",
         "ui-priority": 3
       }
-    },
-    "description": "Vysion API page",
-    "meta-category": "misc",
-    "name": "vysion-page",
-    "required": [
-      "id"
-    ],
-    "uuid": "4d0b66f1-5268-47e0-9d29-f2e4f3db8e7f",
-    "version": 1
+    }
 }
