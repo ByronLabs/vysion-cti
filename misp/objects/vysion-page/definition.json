@@ -5,29 +5,34 @@
     "uuid": "4d0b66f1-5268-47e0-9d29-f2e4f3db8e7f",
     "version": 1,
     "required": [
-      "id"
+        "id"
     ],
     "attributes": {
-      "id": {
-        "categories": [
-          "External analysis"
-        ],
-        "description": "Vysion page ID",
-        "misp-attribute": "text",
-        "ui-priority": 1
-      },
-      "url": {
-        "categories": [
-          "Network activity"
-        ],
-        "description": "Page URL",
-        "misp-attribute": "url",
-        "ui-priority": 2
-      },
-      "network": {
-        "description": "Page network",
-        "misp-attribute": "text",
-        "ui-priority": 3
-      }
+        "id": {
+            "categories": [
+                "External analysis"
+            ],
+            "description": "Vysion page ID",
+            "misp-attribute": "text",
+            "ui-priority": 1
+        },
+        "url": {
+            "categories": [
+                "Network activity"
+            ],
+            "description": "Page URL",
+            "misp-attribute": "url",
+            "ui-priority": 2
+        },
+        "network": {
+            "description": "Page network",
+            "misp-attribute": "text",
+            "ui-priority": 3
+        },
+        "title": {
+            "description": "Web title",
+            "misp-attribute": "text",
+            "ui-priority": 4
+        }
     }
 }
