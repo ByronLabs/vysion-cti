@@ -1,10 +1,18 @@
 {
+    "description": "Vysion Ransomware feed result",
+    "meta-category": "misc",
+    "name": "vysion-ransomware-feed",
+    "uuid": "e0bfa994-c184-4894-bfaa-73b1350746e1",
+    "version": 1,
+    "required": [
+        "id"
+    ],
     "attributes": {
         "id": {
             "categories": [
                 "External analysis"
             ],
-            "description": "Feed result ID",
+            "description": "Vysion Ransomware Feed result ID",
             "misp-attribute": "text",
             "ui-priority": 1
         },
@@ -38,13 +46,5 @@
             "misp-attribute": "text",
             "ui-priority": 7
         }
-    },
-    "description": "Vysion Ransomware feed result",
-    "meta-category": "misc",
-    "name": "vysion-ransomware-feed",
-    "required": [
-        "id"
-    ],
-    "uuid": "e0bfa994-c184-4894-bfaa-73b1350746e1",
-    "version": 10
+    }
 }

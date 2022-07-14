@@ -19,7 +19,7 @@ pip install $MISP_MODULES_HOME
 
 sed -e 's#ExecStart=/var/www/MISP/venv/bin/misp-modules -l 127.0.0.1 -s#ExecStart=/var/www/MISP/venv/bin/misp-modules -l 127.0.0.1#g' /etc/systemd/system/misp-modules.service
 
-cp -r objects/* "$MISP_OBJECTS_PATH/" # TODO + PyMisp objects path
+cp -r objects/* "$MISP_OBJECTS_PATH/" && cp -r objects/* "$MISP_HOME/PyMISP/pymisp/data/misp-objects/objects/" 
 
 chown -R www-data:www-data "$MISP_HOME/"
 

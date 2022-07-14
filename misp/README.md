@@ -29,7 +29,7 @@ tar cvfz misp.tar.gz * && scp -P 2222 -i ~/.ssh/deviandel misp.tar.gz localhost:
 junquera@deviandel:~/Documentos/projects/vysion-cti/misp$ 
 ```
 
-Server: 
+Server:
 
 ```
 mkdir -p /tmp/misp && cd /tmp/misp && rm -rf * && tar xvfz ../misp.tar.gz && bash installer.sh
