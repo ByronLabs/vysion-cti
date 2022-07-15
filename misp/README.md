@@ -11,7 +11,7 @@
 ## Objetos
 
 1. Mover los objetos a la carpeta `$MISP/app/files/misp-objects/objects`
-2. 
+2. Mover los objetos a la carpeta `$PYMISP/app/files/misp-objects/objects`
 
 # Categories and types
 

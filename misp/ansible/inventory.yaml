@@ -1,0 +1,10 @@
+misp_hosts:
+        hosts:
+                vbox1:
+                        ansible_host: localhost
+                        ansible_port: 2222
+                        ssh_port: 2222
+                        http_port: 8080
+                        https_port: 8443
+vars:
+        ansible_user: root

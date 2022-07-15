@@ -1,0 +1,58 @@
+- name: Setup
+  hosts: misp_hosts
+  become: yes
+  become_user: root
+  vars:
+    - base_path: ".."
+    - misp_user: "misp"
+    - web_user: "www-data"
+    - MISP_HOME: "/var/www/MISP"
+    - MISP_MODULES_HOME: "/usr/local/src/misp-modules"
+    - MISP_VENV: "{{MISP_HOME}}/venv"
+    - MISP_OBJECTS_PATH: "{{MISP_HOME}}/app/files/misp-objects/objects"
+    - EXPANSION_MODULES_PATH: "{{MISP_MODULES_HOME}}/misp_modules/modules/expansion"
+
+  tasks:
+    # - name: ensure misp is installed
+    # - name: ensure misp modules is installed
+    - name: install objects
+      copy:
+        src: "{{ item[0] }}"
+        dest: "{{ item[1] }}"
+        owner: "{{ web_user }}"
+      loop: "{{
+          [
+            '{{base_path}}/objects/vysion-page',
+            '{{base_path}}/objects/vysion-ransomware-feed'
+          ] |
+          product(
+            [
+              '{{MISP_OBJECTS_PATH}}',
+              '{{MISP_HOME}}/PyMISP/pymisp/data/misp-objects/objects'
+            ]
+          ) | list
+      }}"
+    - name: install expansion modules
+      copy:
+        src: "{{ item }}"
+        dest: "{{ EXPANSION_MODULES_PATH }}"
+        owner: "{{ misp_user }}"
+      loop:
+        - "{{base_path}}/modules/expansion/vysion-expansion.py"
+
+    - name: upload requirements
+      copy:
+        src:  "{{base_path}}/modules/requirements.txt"
+        dest: "/tmp/requirements.txt"
+    - name: install requirements
+      ansible.builtin.pip:
+        requirements: "/tmp/requirements.txt"
+        virtualenv: "{{ MISP_VENV }}"
+    - name: enable using local misp-modules
+      shell: |
+        sed -i -e 's#ExecStart=/var/www/MISP/venv/bin/misp-modules -l 127.0.0.1 -s#ExecStart=/var/www/MISP/venv/bin/misp-modules -l 127.0.0.1#g' /etc/systemd/system/misp-modules.service
+        systemctl daemon-reload
+    - name: restart misp-modules
+      service:
+          name: misp-modules
+          state: restarted
