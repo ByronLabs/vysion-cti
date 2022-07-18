@@ -3,27 +3,26 @@
   become: yes
   become_user: root
   vars:
-    - base_path: ".."
-    - misp_user: "misp"
-    - web_user: "www-data"
+    - local_base_path: ".."
+    - MISP_USER: "misp"
+    - WEB_USER: "www-data"
     - MISP_HOME: "/var/www/MISP"
     - MISP_MODULES_HOME: "/usr/local/src/misp-modules"
     - MISP_VENV: "{{MISP_HOME}}/venv"
     - MISP_OBJECTS_PATH: "{{MISP_HOME}}/app/files/misp-objects/objects"
     - EXPANSION_MODULES_PATH: "{{MISP_MODULES_HOME}}/misp_modules/modules/expansion"
-
   tasks:
     # - name: ensure misp is installed
     # - name: ensure misp modules is installed
-    - name: install objects
+    - name: create objects
       copy:
         src: "{{ item[0] }}"
         dest: "{{ item[1] }}"
-        owner: "{{ web_user }}"
+        owner: "{{ WEB_USER }}"
       loop: "{{
           [
-            '{{base_path}}/objects/vysion-page',
-            '{{base_path}}/objects/vysion-ransomware-feed'
+            '{{ local_base_path }}/objects/vysion-page',
+            '{{ local_base_path }}/objects/vysion-ransomware-feed'
           ] |
           product(
             [
@@ -32,21 +31,28 @@
             ]
           ) | list
       }}"
+    - name: reinstall PyMISP for the objects
+      ansible.builtin.pip:
+        name: "file://{{ MISP_HOME }}/PyMISP"
+        virtualenv: "{{ MISP_VENV }}"
     - name: install expansion modules
       copy:
         src: "{{ item }}"
         dest: "{{ EXPANSION_MODULES_PATH }}"
-        owner: "{{ misp_user }}"
+        owner: "{{ MISP_USER }}"
       loop:
-        - "{{base_path}}/modules/expansion/vysion-expansion.py"
-
-    - name: upload requirements
+        - "{{ local_base_path }}/modules/expansion/vysion-expansion.py"
+    - name: install requirements
       copy:
-        src:  "{{base_path}}/modules/requirements.txt"
+        src:  "{{ local_base_path }}/modules/requirements.txt"
         dest: "/tmp/requirements.txt"
     - name: install requirements
       ansible.builtin.pip:
         requirements: "/tmp/requirements.txt"
+        virtualenv: "{{ MISP_VENV }}"
+    - name: reinstall misp-modules
+      ansible.builtin.pip:
+        name: "file://{{ MISP_MODULES_HOME }}"
         virtualenv: "{{ MISP_VENV }}"
     - name: enable using local misp-modules
       shell: |
@@ -56,3 +62,5 @@
       service:
           name: misp-modules
           state: restarted
+
+

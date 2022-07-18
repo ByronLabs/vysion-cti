@@ -15,7 +15,7 @@ mispattributes = {'input': ['email', 'domain', "hostname", "url", "text", "btc",
                   'format': 'misp_standard'}
 
 # possible module-types: 'expansion', 'hover' or both
-moduleinfo = {'version': '1', 'author': 'Byron Labs S.L.',
+moduleinfo = {'version': '1', 'author': 'Byron Labs',
               'description': 'Enrich observables with the Vysion API',
               'module-type': ['expansion']}
 

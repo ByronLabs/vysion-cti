@@ -2,39 +2,41 @@
 
 > Necesario python3.7
 
-## Expansion
+# Organización
 
-1. Instalar dependencias (`requirements.txt`)
-2. Instalar `modules/extension/vysion-expansion.py` en `$MISP_MODULES/modules/expansion/`
-3. Administration > Server Settings & Maintenance > Plugin settings  > Enrichment > 
+1. Administration > Add Organisations
 
-## Objetos
+- Organisation Identifier: `Byron Labs`
+- UUID: `efcd64f5-49db-49d6-a7cb-07c23d12e534`
+- Logo: `organization/logo.png`
+- Nationality: Spain
+- Sector: infosec
 
-1. Mover los objetos a la carpeta `$MISP/app/files/misp-objects/objects`
-2. Mover los objetos a la carpeta `$PYMISP/app/files/misp-objects/objects`
+# Objetos
 
-# Categories and types
+Mover los objetos (i.e., `vysion-page` y `vysion-ransomware-feed`) a todas las carpetas que utilicen `misp-objects` (normalmente `$MISP/app/files/misp-objects/objects` y `$PYMISP/app/files/misp-objects/objects`). Reinstalar todos los paquetes secundarios que hayan sido modificados (e.g., volver a instalar PyMISP para que los objetos creados pasen a los paquetes del `virtualenv`)
 
-https://www.circl.lu/doc/misp/categories-and-types/
+# Módulo de expansión
 
-- Expansion
-- Objects (https://www.misp-project.org/2021/03/17/MISP-Objects-101.html/)
+1. Instalar dependencias (`requirements.txt`) en el entorno utilizado por la instancia de MISP (e.g., virtualenv, poetry, o sistema).
+2. Introducir fichero `modules/extension/vysion-expansion.py` en `$MISP_MODULES/modules/expansion/`
+3. Reiniciar (si procede) el servicio de `misp-modules` que se esté utilizando
+4. Habilitar módulo en Administration > Server Settings & Maintenance > Plugin settings  > Enrichment: `vysion-expansion_enabled = true`
+5. Introducir api key en el menú de configuración: `vysion-expansion_apikey`
 
-## Auto
+# Feeds
 
-Dev:
 
-```
-tar cvfz misp.tar.gz * && scp -P 2222 -i ~/.ssh/deviandel misp.tar.gz localhost:/tmp && rm misp.tar.gz
-junquera@deviandel:~/Documentos/projects/vysion-cti/misp$ 
-```
+1. Abrir al menú para añadir feeds: Sync Actions > List feeds > Add feed
 
-Server:
+- Enabled: `true`
+- Name: `Vysion Ransomware Feed`
+- Provider: `Byron Labs`
+- Input Source: `Network`
+- URL: `https://api.vysion.ai/api/v1/feed/ransomware/misp`
+- Source Format: `MISP Feed`
+- Headers
+    - `x-api-key: ************`
+- Distribution: `Your organization only`
 
-```
-mkdir -p /tmp/misp && cd /tmp/misp && rm -rf * && tar xvfz ../misp.tar.gz && bash installer.sh
-```
-
-OJO
-
-El script de instalación de MISP lanza misp-modules con el flag `-s` (sólo módulos "oficiales" del pip). Hay que desactivarlo para que funcione este paquete
+2. Una vez instalado pulsar en `Fetch and store all feed metadata`
