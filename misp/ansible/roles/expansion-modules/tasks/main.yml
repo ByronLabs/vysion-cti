@@ -1,0 +1,29 @@
+- name: install expansion modules
+  copy:
+    src: "{{ item }}"
+    dest: "{{ EXPANSION_MODULES_PATH }}"
+    owner: "{{ MISP_USER }}"
+  loop:
+    - "{{ local_base_path }}/modules/expansion/vysion-expansion.py"
+- name: install requirements
+  copy:
+    src:  "{{ local_base_path }}/modules/requirements.txt"
+    dest: "/tmp/requirements.txt"
+- name: install requirements
+  ansible.builtin.pip:
+    requirements: "/tmp/requirements.txt"
+    virtualenv: "{{ MISP_VENV }}"
+- name: reinstall misp-modules
+  ansible.builtin.pip:
+    name: "file://{{ MISP_MODULES_HOME }}"
+    virtualenv: "{{ MISP_VENV }}"
+- name: enable using local misp-modules
+  shell: |
+    sed -i -e 's#ExecStart=/var/www/MISP/venv/bin/misp-modules -l 127.0.0.1 -s#ExecStart=/var/www/MISP/venv/bin/misp-modules -l 127.0.0.1#g' /etc/systemd/system/misp-modules.service
+    systemctl daemon-reload
+- name: restart misp-modules
+  service:
+      name: misp-modules
+      state: restarted
+
+

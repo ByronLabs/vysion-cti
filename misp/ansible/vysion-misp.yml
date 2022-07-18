@@ -1,66 +1,10 @@
-- name: Setup
-  hosts: misp_hosts
-  become: yes
-  become_user: root
+---
+- hosts: misps
+  become: true
+  roles:
+    - { role: objects }
+    - { role: expansion-modules }
+  vars_prompt:
   vars:
     - local_base_path: ".."
-    - MISP_USER: "misp"
-    - WEB_USER: "www-data"
-    - MISP_HOME: "/var/www/MISP"
-    - MISP_MODULES_HOME: "/usr/local/src/misp-modules"
-    - MISP_VENV: "{{MISP_HOME}}/venv"
-    - MISP_OBJECTS_PATH: "{{MISP_HOME}}/app/files/misp-objects/objects"
-    - EXPANSION_MODULES_PATH: "{{MISP_MODULES_HOME}}/misp_modules/modules/expansion"
-  tasks:
-    # - name: ensure misp is installed
-    # - name: ensure misp modules is installed
-    - name: create objects
-      copy:
-        src: "{{ item[0] }}"
-        dest: "{{ item[1] }}"
-        owner: "{{ WEB_USER }}"
-      loop: "{{
-          [
-            '{{ local_base_path }}/objects/vysion-page',
-            '{{ local_base_path }}/objects/vysion-ransomware-feed'
-          ] |
-          product(
-            [
-              '{{MISP_OBJECTS_PATH}}',
-              '{{MISP_HOME}}/PyMISP/pymisp/data/misp-objects/objects'
-            ]
-          ) | list
-      }}"
-    - name: reinstall PyMISP for the objects
-      ansible.builtin.pip:
-        name: "file://{{ MISP_HOME }}/PyMISP"
-        virtualenv: "{{ MISP_VENV }}"
-    - name: install expansion modules
-      copy:
-        src: "{{ item }}"
-        dest: "{{ EXPANSION_MODULES_PATH }}"
-        owner: "{{ MISP_USER }}"
-      loop:
-        - "{{ local_base_path }}/modules/expansion/vysion-expansion.py"
-    - name: install requirements
-      copy:
-        src:  "{{ local_base_path }}/modules/requirements.txt"
-        dest: "/tmp/requirements.txt"
-    - name: install requirements
-      ansible.builtin.pip:
-        requirements: "/tmp/requirements.txt"
-        virtualenv: "{{ MISP_VENV }}"
-    - name: reinstall misp-modules
-      ansible.builtin.pip:
-        name: "file://{{ MISP_MODULES_HOME }}"
-        virtualenv: "{{ MISP_VENV }}"
-    - name: enable using local misp-modules
-      shell: |
-        sed -i -e 's#ExecStart=/var/www/MISP/venv/bin/misp-modules -l 127.0.0.1 -s#ExecStart=/var/www/MISP/venv/bin/misp-modules -l 127.0.0.1#g' /etc/systemd/system/misp-modules.service
-        systemctl daemon-reload
-    - name: restart misp-modules
-      service:
-          name: misp-modules
-          state: restarted
-
-
+...
