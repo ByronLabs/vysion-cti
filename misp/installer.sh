@@ -16,6 +16,7 @@ for OPATH in ${OBJECT_PATHS[*]}; do
     cp -r objects/* "$OPATH";
     chown -R $WEB_USER:$WEB_USER "$OPATH";
 done
+
 # Reinstall PyMISP (so it reinstalls the objects)
 "$MISP_VENV/bin/python3" -m pip install $MISP_HOME/PyMISP
 

@@ -1,21 +1,4 @@
-- name: create objects
-  copy:
-    src: "{{ item[0] }}"
-    dest: "{{ item[1] }}"
-    owner: "{{ WEB_USER }}"
-  loop: "{{
-      [
-        '{{ local_base_path }}/objects/vysion-page',
-        '{{ local_base_path }}/objects/vysion-ransomware-feed'
-      ] |
-      product(
-        [
-          '{{MISP_OBJECTS_PATH}}',
-          '{{MISP_HOME}}/PyMISP/pymisp/data/misp-objects/objects'
-        ]
-      ) | list
-  }}"
-- name: reinstall PyMISP for the objects
-  ansible.builtin.pip:
-    name: "file://{{ MISP_HOME }}/PyMISP"
-    virtualenv: "{{ MISP_VENV }}"
+- name: Restart misp-modules
+  service:
+      name: misp-modules
+      state: restarted

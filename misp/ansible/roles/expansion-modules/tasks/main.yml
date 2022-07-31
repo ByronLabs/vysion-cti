@@ -21,9 +21,5 @@
   shell: |
     sed -i -e 's#ExecStart=/var/www/MISP/venv/bin/misp-modules -l 127.0.0.1 -s#ExecStart=/var/www/MISP/venv/bin/misp-modules -l 127.0.0.1#g' /etc/systemd/system/misp-modules.service
     systemctl daemon-reload
-- name: restart misp-modules
-  service:
-      name: misp-modules
-      state: restarted
-
-
+  notify:
+    - Restart misp-modules
