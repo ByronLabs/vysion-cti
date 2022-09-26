@@ -7,8 +7,8 @@ from urllib.parse import urlparse
 import logging
 
 import vysion.client as vysion
-import vysion.model as model
-from vysion.model.util import MISPProcessor
+import vysion.dto as dto
+from vysion.dto.util import MISPProcessor
 
 misperrors = {'error': 'Error'}
 mispattributes = {'input': ['email', 'domain', "hostname", "url", "text", "btc", "phone-number", "target-org"],
@@ -133,7 +133,7 @@ def handler(q=False):
 
         if result is None:
             return {'results': {}}
-        elif isinstance(result, model.VysionError):
+        elif isinstance(result, dto.VysionError):
             LOGGER.error(str(result))
             return {'results': {}}
 

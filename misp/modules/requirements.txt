@@ -1,2 +1,2 @@
 pymisp==2.4.159
-vysion
+vysion<2.0.0
