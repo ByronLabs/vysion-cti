@@ -31,6 +31,11 @@
             "misp-attribute": "link",
             "ui-priority": 4
         },
+        "country": {
+            "description": "Affected company country",
+            "misp-attribute": "target-location",
+            "ui-priority": 5
+        },
         "group": {
             "description": "Ransomware group",
             "misp-attribute": "threat-actor",

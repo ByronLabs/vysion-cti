@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 import logging
 
 import vysion.client as vysion
+
 import vysion.dto as dto
 from vysion.dto.util import MISPProcessor
 
@@ -120,6 +121,7 @@ def handler(q=False):
 
         result = None
 
+        # TODO Segregar funcionalidad por tipo
         if attribute_type == 'email': 
             result = client.find_email(attribute_value)
         elif attribute_type == 'domain': 
