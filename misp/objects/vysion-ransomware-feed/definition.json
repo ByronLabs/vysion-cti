@@ -3,7 +3,7 @@
     "meta-category": "misc",
     "name": "vysion-ransomware-feed",
     "uuid": "e0bfa994-c184-4894-bfaa-73b1350746e1",
-    "version": 1,
+    "version": 2,
     "required": [
         "id"
     ],
