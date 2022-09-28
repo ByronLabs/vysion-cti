@@ -181,23 +181,6 @@ def handler(q=False):
         LOGGER.info("Vysion client initialized")
 
         LOGGER.info("Vysion result obtained")
-        LOGGER.info(
-            {
-                "results": {
-                    "Object": [
-                        json.loads(object.to_json()) for object in misp_event.objects
-                    ],
-                    "Attribute": [
-                        json.loads(attribute.to_json())
-                        for attribute in misp_event.attributes
-                    ],
-                    "Tag": [
-                        json.loads(tag.to_json())
-                        for tag in misp_event.tag
-                    ]
-                }
-            }
-        )
 
         return {
             "results": {
@@ -207,10 +190,11 @@ def handler(q=False):
                 "Attribute": [
                     json.loads(attribute.to_json())
                     for attribute in misp_event.attributes
-                ],
+                ], 
+                # TODO Cómo hacer que las tags se representen en MISP
                 "Tag": [
                     json.loads(tag.to_json())
-                    for tag in misp_event.tag
+                    for tag in misp_event.tags
                 ]
             }
         }
