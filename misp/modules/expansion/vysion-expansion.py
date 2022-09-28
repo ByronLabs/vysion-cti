@@ -1,5 +1,5 @@
 import json
-from pymisp import MISPAttribute
+from pymisp import MISPAttribute, MISPEvent
 from urllib.parse import urlparse
 
 import logging
@@ -176,7 +176,7 @@ def handler(q=False):
             return {"results": {}}
 
         p = MISPProcessor()
-        misp_event = p.process(result, ref_attribute=misp_attribute)
+        misp_event: MISPEvent = p.process(result, ref_attribute=misp_attribute)
 
         LOGGER.info("Vysion client initialized")
 
@@ -191,6 +191,10 @@ def handler(q=False):
                         json.loads(attribute.to_json())
                         for attribute in misp_event.attributes
                     ],
+                    "Tag": [
+                        json.loads(tag.to_json())
+                        for tag in misp_event.tag
+                    ]
                 }
             }
         )
@@ -204,6 +208,10 @@ def handler(q=False):
                     json.loads(attribute.to_json())
                     for attribute in misp_event.attributes
                 ],
+                "Tag": [
+                    json.loads(tag.to_json())
+                    for tag in misp_event.tag
+                ]
             }
         }
 
