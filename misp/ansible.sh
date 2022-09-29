@@ -1,2 +1,2 @@
 #!/bin/bash
-ansible-playbook -i ansible ansible/vysion-misp.yml -K -vvv
+ansible-playbook -u vysion --ask-pass -i ansible ansible/vysion-misp.yml -K -vvv
