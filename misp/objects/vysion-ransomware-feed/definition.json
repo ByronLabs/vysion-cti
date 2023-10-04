@@ -50,6 +50,11 @@
             "description": "Leak content",
             "misp-attribute": "text",
             "ui-priority": 7
+        },
+        "url_vysion_ransom": {
+            "description": "Vysion URL",
+            "misp-attribute": "text",
+            "ui-priority": 5
         }
     }
 }

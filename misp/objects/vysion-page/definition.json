@@ -33,6 +33,14 @@
             "description": "Web title",
             "misp-attribute": "text",
             "ui-priority": 4
+        },
+        "url_vysion": {
+            "categories": [
+                "Network activity"
+            ],
+            "description": "Vysion URL",
+            "misp-attribute": "url",
+            "ui-priority": 5
         }
     }
 }
