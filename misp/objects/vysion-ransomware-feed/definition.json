@@ -52,9 +52,12 @@
             "ui-priority": 7
         },
         "url_vysion_ransom": {
-            "description": "Vysion URL",
-            "misp-attribute": "text",
-            "ui-priority": 5
+            "categories": [
+                "Network activity"
+            ],
+            "description": "Vysion Ransomware URL",
+            "misp-attribute": "url",
+            "ui-priority": 8
         }
     }
 }
