@@ -56,7 +56,7 @@
                 "Network activity"
             ],
             "description": "Vysion Ransomware URL",
-            "misp-attribute": "url",
+            "misp-attribute": "link",
             "ui-priority": 8
         }
     }
