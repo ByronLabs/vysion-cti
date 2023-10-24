@@ -25,7 +25,6 @@ cp modules/expansion/* "$EXPANSION_MODULES_PATH/"
 chown -R $MISP_USER "$EXPANSION_MODULES_PATH/"
 
 # Install dependencies
-"$MISP_VENV/bin/python3" -m pip install /home/ubuntu/vysion-py
 "$MISP_VENV/bin/python3" -m pip install -r modules/requirements.txt
 "$MISP_VENV/bin/python3" -m pip install $MISP_MODULES_HOME
 chown -R $WEB_USER:$WEB_USER "$MISP_HOME/"
