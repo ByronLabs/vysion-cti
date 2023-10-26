@@ -113,7 +113,6 @@ def handler(q=False):
         return misperrors
 
     if not request.get("attribute"):
-        #  or not check_input_attribute(request['attribute']):
         return {
             "error": f"{standard_error_message}, which should contain at least a type, a value and an uuid."
         }
@@ -146,16 +145,13 @@ def handler(q=False):
         # https://www.misp-project.org/datamodels/#types
 
         LOGGER.debug(attribute_type)
-        LOGGER.debug(attribute_type)
 
         result = None
 
-        # TODO Segregar funcionalidad por tipo
         if attribute_type == "email":
             result = client.find_email(attribute_value)
         elif attribute_type == "domain":
-            result = client.search(attribute_value)  # TODO
-        # elif attribute_type == 'hostname': result = client.search(attribute_value)
+            result = client.search(attribute_value) 
         elif attribute_type == "url":
             result = client.search(
                 attribute_value
@@ -191,7 +187,6 @@ def handler(q=False):
                     json.loads(attribute.to_json())
                     for attribute in misp_event.attributes
                 ], 
-                # TODO Cómo hacer que las tags se representen en MISP
                 "Tag": [
                     json.loads(tag.to_json())
                     for tag in misp_event.tags
