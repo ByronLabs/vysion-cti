@@ -1,9 +1,9 @@
 # Vysion MISP
 
-> Necesario python3.7 o versión superior.
-> Se cuenta con un instalador "installer.sh" para realizar la parte de "Objetos" y "Módulo de expansión" en este mismo directorio.
+> Python 3.7 or higher version required.
+> An installer "installer.sh" is available to install the "Objects" and "Expansion Module" parts in this same directory.
 
-# Organización
+# Organisation
 
 1. Administration > Add Organisations
 
@@ -13,22 +13,21 @@
 - Nationality: Spain
 - Sector: infosec
 
-# Objetos
+# Objects
 
-Mover los objetos (i.e., `vysion-page` y `vysion-ransomware-feed`) a todas las carpetas que utilicen `misp-objects` (normalmente `$MISP/app/files/misp-objects/objects` y `$PYMISP/app/files/misp-objects/objects`). Reinstalar todos los paquetes secundarios que hayan sido modificados (e.g., volver a instalar PyMISP para que los objetos creados pasen a los paquetes del `virtualenv`)
+Move the objects (i.e., `vysion-page` and `vysion-ransomware-feed`) to all folders that use `misp-objects` (usually `$MISP/app/files/misp-objects/objects` and `$PYMISP/app/files/misp-objects/objects`). Reinstall all secondary packages that have been modified (e.g., reinstall PyMISP so that the objects created are passed to the `virtualenv` packages)
 
-# Módulo de expansión
+# Expansion Module
 
-1. Instalar dependencias (`requirements.txt`) en el entorno utilizado por la instancia de MISP (e.g., virtualenv, poetry, o sistema).
-2. Introducir fichero `modules/extension/vysion-expansion.py` en `$MISP_MODULES/modules/expansion/`
-3. Reiniciar (si procede) el servicio de `misp-modules` que se esté utilizando
-4. Habilitar módulo en Administration > Server Settings & Maintenance > Plugin settings  > Enrichment: `vysion-expansion_enabled = true`
-5. Introducir api key en el menú de configuración: `vysion-expansion_apikey`
+1. Install dependencies (`requirements.txt`) in the environment used by the MISP instance (e.g., virtualenv, poetry, or system).
+2. Insert file `modules/extension/vysion-expansion.py` in `$MISP_MODULES/modules/expansion/`
+3. Restart (if applicable) the `misp-modules` service being used
+4. Enable module in Administration > Server Settings & Maintenance > Plugin settings > Enrichment: `vysion-expansion_enabled = true`
+5. Enter api key in the configuration menu: `vysion-expansion_apikey`
 
 # Feeds
 
-
-1. Abrir al menú para añadir feeds: Sync Actions > List feeds > Add feed
+1. Open the menu to add feeds: Sync Actions > List feeds > Add feed
 
 - Enabled: `true`
 - Name: `Vysion Ransomware Feed`
@@ -40,4 +39,4 @@ Mover los objetos (i.e., `vysion-page` y `vysion-ransomware-feed`) a todas las c
     - `x-api-key: ************`
 - Distribution: `Your organization only`
 
-2. Una vez instalado pulsar en `Fetch and store all feed metadata`
+2. Once installed click on `Fetch and store all feed metadata`
