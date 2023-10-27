@@ -1,0 +1,10 @@
+---
+- hosts: misps
+  become: true
+  roles:
+    - { role: objects }
+    - { role: expansion-modules }
+  vars_prompt:
+  vars:
+    - local_base_path: ".."
+...

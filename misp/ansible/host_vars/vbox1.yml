@@ -1,0 +1,9 @@
+---
+MISP_USER: "misp"
+WEB_USER: "www-data"
+MISP_HOME: "/var/www/MISP"
+MISP_MODULES_HOME: "/usr/local/src/misp-modules"
+MISP_VENV: "{{MISP_HOME}}/venv"
+MISP_OBJECTS_PATH: "{{MISP_HOME}}/app/files/misp-objects/objects"
+EXPANSION_MODULES_PATH: "{{MISP_MODULES_HOME}}/misp_modules/modules/expansion"
+...
