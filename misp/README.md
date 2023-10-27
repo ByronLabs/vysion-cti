@@ -1,6 +1,7 @@
 # Vysion MISP
 
-> Necesario python3.7
+> Necesario python3.7 o versión superior.
+> Se cuenta con un instalador "installer.sh" para realizar la parte de "Objetos" y "Módulo de expansión" en este mismo directorio.
 
 # Organización
 
