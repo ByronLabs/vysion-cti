@@ -1,34 +1,19 @@
+# Vysion-CTI
+
+Welcome!
+
+This is our implementation of Vysion for MISP, specifically an enrichment module to use in your feed to get more information for your Cyber Intelligence tasks, searching for example by group or ransomware victim in our logs, which are updated 24/7. 
+
+We also have API access to generate your own feed, both the installation and the enrichment module and feed can be found in /misp.
+
+You can request a demo or an api-key on our [website](https://byronlabs.io) or at [vysion.ai](https://vysion.ai).
+
 # Modules
 
 - Expansion modules
 
-Módulos de enriquecimiento
-
-- Import modules: obtener datos de Vysion
-
-Principal
-
-- Export modules: subir datos a Vysion (e.g., direcciones de darknets)
-
-Subir datos a .onion
-
-## API
-
-Deben conar con tres métodos:
-
-- `introspection()`
-- `handler()`
-- `version()`
-
-
-# Cosas que se pueden buscar en vysion
-
-- btc
-- email
-- onion
-- términos?
 
 # Referencias
 
 - https://github.com/MISP/misp-modules
-- https://pymisp.readthedocs.io/en/latest/README.html
+- developers.vysion.ai
