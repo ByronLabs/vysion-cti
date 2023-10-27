@@ -1,5 +1,7 @@
 # Vysion MISP
 
+It's very easy to install Vysion MISP! Just need to have already installed [MISP Core and MISP Modules](https://www.misp-project.org/download/) and follow the instructions write below.
+
 > Python 3.7 or higher version required.
 > An installer "installer.sh" is available to install the "Objects" and "Expansion Module" parts in this same directory.
 
