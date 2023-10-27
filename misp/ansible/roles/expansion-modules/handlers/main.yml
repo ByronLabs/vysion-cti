@@ -1,0 +1,4 @@
+- name: Restart misp-modules
+  service:
+      name: misp-modules
+      state: restarted
