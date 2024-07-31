@@ -16,17 +16,17 @@
             "misp-attribute": "text",
             "ui-priority": 1
         },
-        "company": {
+        "companyName": {
             "description": "Affected company",
             "misp-attribute": "target-org",
             "ui-priority": 2
         },
-        "company_link": {
+        "companyLink": {
             "description": "Affected company link",
             "misp-attribute": "link",
             "ui-priority": 3
         },
-        "link": {
+        "url": {
             "description": "Ransomware's leak link",
             "misp-attribute": "link",
             "ui-priority": 4
@@ -36,17 +36,17 @@
             "misp-attribute": "target-location",
             "ui-priority": 5
         },
-        "group": {
+        "ransomwareGroup": {
             "description": "Ransomware group",
             "misp-attribute": "threat-actor",
             "ui-priority": 5
         },
-        "date": {
+        "detectionDate": {
             "description": "Leak date",
             "misp-attribute": "datetime",
             "ui-priority": 6
         },
-        "info": {
+        "text": {
             "description": "Leak content",
             "misp-attribute": "text",
             "ui-priority": 7
