@@ -21,10 +21,10 @@ You can request a demo or an api-key on our [website](https://byronlabs.io) or a
 
 # Examples
 
-![img1](https://github.com/ByronLabs/vysion-cti/assets/38075180/cc588609-3e60-427f-8ae4-1c1d13048abb)
+![img1](https://github.com/ByronLabs/vysion-cti/assets/38075180/c52c8591-5b5e-4bd3-946a-9f124feaebb8)
 
 
-![img2](https://github.com/ByronLabs/vysion-cti/assets/38075180/c3e1694a-4570-4084-bb7c-0ce1952622b4)
+![img2](https://github.com/ByronLabs/vysion-cti/assets/38075180/d50d92bc-7717-4b6e-8978-98b21fac1367)
 
 
-![img3](https://github.com/ByronLabs/vysion-cti/assets/38075180/47510b1c-2b7f-48ee-8845-e99818f29fdf)
+![img3](https://github.com/ByronLabs/vysion-cti/assets/38075180/9fcaab6d-9f6d-4e97-b3d9-b678378e071a)
