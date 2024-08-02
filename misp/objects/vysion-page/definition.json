@@ -29,7 +29,7 @@
             "misp-attribute": "text",
             "ui-priority": 3
         },
-        "title": {
+        "pageTitle": {
             "description": "Web title",
             "misp-attribute": "text",
             "ui-priority": 4

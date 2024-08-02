@@ -10,6 +10,8 @@ EXPANSION_MODULES_PATH="$MISP_MODULES_HOME/misp_modules/modules/expansion"
 WEB_USER="www-data"
 MISP_USER="misp"
 
+export API_HOST="https://api-stage.vysion.ai"
+
 # Create objects
 OBJECT_PATHS=("$MISP_OBJECTS_PATH/" "$MISP_HOME/PyMISP/pymisp/data/misp-objects/objects/")
 for OPATH in ${OBJECT_PATHS[*]}; do
@@ -25,8 +27,8 @@ cp modules/expansion/* "$EXPANSION_MODULES_PATH/"
 chown -R $MISP_USER "$EXPANSION_MODULES_PATH/"
 
 # Install dependencies
-"$MISP_VENV/bin/python3" -m pip install -r modules/requirements.txt
-"$MISP_VENV/bin/python3" -m pip install $MISP_MODULES_HOME
+API_HOST="https://api-stage.vysion.ai" "$MISP_VENV/bin/python3" -m pip install -r modules/requirements.txt
+API_HOST="https://api-stage.vysion.ai" "$MISP_VENV/bin/python3" -m pip install $MISP_MODULES_HOME
 chown -R $WEB_USER:$WEB_USER "$MISP_HOME/"
 
 # Enable custom modules in misp-modules service
