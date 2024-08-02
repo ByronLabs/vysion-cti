@@ -167,9 +167,6 @@ def handler(q=False):
 
         if result is None:
             return {"results": {}}
-        elif isinstance(result, dto.VysionError):
-            LOGGER.error(str(result))
-            return {"results": {}}
 
         p = MISPProcessor()
         misp_event: MISPEvent = p.process(result, ref_attribute=misp_attribute)
