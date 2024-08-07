@@ -1,2 +1,2 @@
-pymisp[email,fileobjects,openioc,pdfexport,url]==2.4.175
-vysion>=2.0.0
+pymisp[email,fileobjects,openioc,pdfexport,url]==2.4.194
+vysion>=2.0.5
