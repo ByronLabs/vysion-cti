@@ -38,7 +38,7 @@ Move the objects (i.e., `vysion-page` and `vysion-ransomware-feed`) to all folde
 - Name: `Vysion Ransomware Feed`
 - Provider: `Byron Labs`
 - Input Source: `Network`
-- URL: `https://api.vysion.ai/api/v1/feed/ransomware/misp`
+- URL: `https://api.vysion.ai/api/v2/feed/ransomware/misp`
 - Source Format: `MISP Feed`
 - Headers
     - `x-api-key: ************`
