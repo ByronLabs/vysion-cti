@@ -2,6 +2,7 @@ import importlib.util
 from pathlib import Path
 import sys
 import unittest
+from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 from pycti import OpenCTIConnectorHelper
 
@@ -57,6 +58,31 @@ class ClientTests(unittest.TestCase):
         response.json.return_value = {"data": {"hits": "not-list"}}
         with self.assertRaises(VysionError):
             self.client([response]).get("x")
+
+    def test_short_page_with_more_results_continues(self):
+        client = self.client([self.response(200, [{"id": "a"}], 2), self.response(200, [{"id": "b"}], 2)])
+        hits, limited = client.search("x", page_size=10)
+        self.assertEqual(len(hits), 2)
+        self.assertFalse(limited)
+
+    def test_incomplete_pagination_fails(self):
+        client = self.client([self.response(200, [{"id": "a"}], 2), self.response(200, [], 2)])
+        with self.assertRaises(VysionError):
+            client.search("x")
+
+    def test_retry_exhaustion_and_safe_errors(self):
+        client = self.client([self.response(503)] * 3)
+        with self.assertRaises(VysionError):
+            client.get("x")
+        self.assertEqual(client.session.get.call_count, 3)
+        self.assertEqual(client.session.get.call_args.kwargs["timeout"], (10, 45))
+        self.assertFalse(client.session.get.call_args.kwargs["allow_redirects"])
+
+    def test_redirect_rejected(self):
+        client = self.client([self.response(302)])
+        with self.assertRaises(VysionError):
+            client.get("x")
+        self.assertEqual(client.session.get.call_count, 1)
 
 
 class ModelTests(unittest.TestCase):
@@ -220,6 +246,33 @@ class ModelTests(unittest.TestCase):
         connector.run_once()
         self.assertEqual(connector.helper.set_state.call_args.args[0]["detections"], 0)
         connector.helper.send_stix2_bundle.assert_not_called()
+
+    def test_wallet_historical_import_does_not_checkpoint(self):
+        connector = wallets.WalletFeed.__new__(wallets.WalletFeed)
+        connector.platform = "darknet"
+        connector.helper = Mock()
+        connector.helper.get_state.return_value = {"last_run": 123}
+        connector.client = Mock()
+        start = datetime(2026, 9, 1, tzinfo=timezone.utc)
+        connector.client.search.return_value = ([
+            {"id": "old", "detectionDate": "2026-08-31T23:59:59Z", "bitcoin_address": ["old"]},
+            {"id": "first", "detectionDate": "2026-09-01T01:00:00Z", "bitcoin_address": ["address-one"]},
+            {"id": "second", "detectionDate": "2026-09-01T02:00:00Z", "bitcoin_address": ["address-two"]},
+        ], False)
+        result = connector.run_once(start, start + timedelta(hours=23), checkpoint=False, max_detections=1)
+        self.assertEqual(result["detections"], 1)
+        self.assertEqual(result["objects"], 2)
+        connector.helper.set_state.assert_not_called()
+        connector.helper.send_stix2_bundle.assert_called_once()
+
+    def test_wallet_historical_window_cannot_replace_checkpoint(self):
+        connector = wallets.WalletFeed.__new__(wallets.WalletFeed)
+        connector.helper = Mock()
+        connector.helper.get_state.return_value = {}
+        start = datetime(2026, 9, 1, tzinfo=timezone.utc)
+        with self.assertRaises(ValueError):
+            connector.run_once(start, start + timedelta(hours=23))
+        connector.helper.api.work.initiate_work.assert_not_called()
 
 
 if __name__ == "__main__":

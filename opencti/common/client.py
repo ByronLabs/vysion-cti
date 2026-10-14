@@ -14,7 +14,7 @@ class VysionError(RuntimeError):
 class VysionClient:
     def __init__(self, base_url, api_key, sleep=time.sleep, session=None):
         parsed = urlsplit(base_url or "")
-        if parsed.scheme != "https" or not parsed.netloc or parsed.query or parsed.fragment:
+        if parsed.scheme != "https" or not parsed.netloc or parsed.query or parsed.fragment or parsed.username or parsed.password:
             raise ValueError("VYSION_API_URL must be an HTTPS base URL")
         if not api_key or api_key.startswith("CHANGE_ME"):
             raise ValueError("VYSION_API_KEY is missing")
@@ -71,12 +71,21 @@ class VysionClient:
             data = payload.get("data")
             if not isinstance(data, dict) or not isinstance(data.get("hits"), list):
                 raise VysionError("Vysion returned an unexpected result schema")
+            if any(not isinstance(hit, dict) for hit in data["hits"]):
+                raise VysionError("Vysion returned a non-object result")
+            total = data.get("total")
+            if isinstance(total, dict):
+                total = total.get("value")
+            if total is not None and (type(total) is not int or total < 0):
+                raise VysionError("Vysion returned an invalid result count")
             return data
         raise VysionError("Vysion request could not be completed")
 
     def search(self, endpoint, params=None, page_size=None, max_pages=None):
         size = page_size or self.page_size
         pages = max_pages or self.max_pages
+        if not 1 <= size <= 100 or not 1 <= pages <= 100:
+            raise ValueError("Invalid Vysion search limits")
         hits = []
         total = None
         for page in range(1, pages + 1):
@@ -86,6 +95,8 @@ class VysionClient:
             total = data.get("total")
             if isinstance(total, dict):
                 total = total.get("value")
-            if not batch or (isinstance(total, int) and len(hits) >= total) or len(batch) < size:
+            if not batch and isinstance(total, int) and len(hits) < total:
+                raise VysionError("Vysion pagination ended before the advertised result count")
+            if (isinstance(total, int) and len(hits) >= total) or (total is None and len(batch) < size):
                 return hits, False
         return hits, total is None or not isinstance(total, int) or len(hits) < total

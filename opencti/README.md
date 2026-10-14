@@ -63,7 +63,7 @@ Edit `.env`, then run `docker compose --profile vysion up -d connector-vysion-en
 | `VYSION_MAX_TLP` | `TLP:GREEN` | Maximum TLP allowed for external queries |
 | `VYSION_MAX_PAGES` | `5` | Pages per source |
 | `VYSION_PAGE_SIZE` | `10` | Results per page; leaks uses five |
-| `VYSION_HTTP_ATTEMPTS` | `3` | Enrichment/wallet HTTP retry limit |
+| `VYSION_HTTP_ATTEMPTS` | `3` | HTTP retry limit for all connectors |
 
 The `whitelist` label skips enrichment. Markings are propagated; source errors
 and pagination limits are reported in Works.
@@ -71,8 +71,9 @@ and pagination limits are reported in Works.
 ## Feeds
 
 - **Ransomware:** hourly, rolling 24-hour window. Configure `CONNECTOR_RUN_EVERY`
-  and `VYSION_LOOKBACK_HOURS`. Resetting state or retrying partial imports can
-  duplicate incidents.
+  and `VYSION_LOOKBACK_HOURS`. Deterministic STIX IDs make retries idempotent;
+  HTTP/schema/pagination failures preserve the checkpoint. Keep existing state
+  when upgrading: legacy incidents with random IDs are not migrated automatically.
 - **Wallets:** hourly, initially the previous 24 hours, with overlapping queries
   and up to 30 days of catch-up. Set `VYSION_WALLET_PLATFORM` to `darknet` (default),
   `telegram`, `discord` or `all`; interval: `VYSION_WALLET_INTERVAL_SECONDS`.
@@ -89,3 +90,7 @@ docker run --rm --entrypoint python3 -v "$PWD:/tests:ro" \
 ```
 
 [Vysion API documentation](https://developers.vysion.ai)
+
+CI builds all three images and runs offline tests on pushes and pull requests.
+See [live smoke tests](tests/README.md) for small historical imports and
+deduplication checks without changing the scheduled checkpoints.

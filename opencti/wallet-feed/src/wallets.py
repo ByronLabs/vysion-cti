@@ -56,12 +56,21 @@ class WalletFeed:
             raise ValueError("Wallet polling interval must be at least 60 seconds")
         self.helper = OpenCTIConnectorHelper({})
 
-    def run_once(self):
+    def run_once(self, window_start=None, window_end=None, checkpoint=True, max_detections=None):
         now = datetime.now(timezone.utc)
         state = self.helper.get_state() or {}
         previous = state.get("window_end")
-        start = datetime.fromisoformat(previous) - timedelta(hours=24) if previous else now - timedelta(hours=24)
-        start = max(start, now - timedelta(days=30))
+        if window_start is not None or window_end is not None:
+            if checkpoint or window_start is None or window_end is None:
+                raise ValueError("Historical test windows require both dates and checkpoint=False")
+            start, now = window_start, window_end
+            if start.tzinfo is None or now.tzinfo is None or start >= now or now - start > timedelta(days=31):
+                raise ValueError("Invalid historical wallet test window")
+        else:
+            start = datetime.fromisoformat(previous) - timedelta(hours=24) if previous else now - timedelta(hours=24)
+            start = max(start, now - timedelta(days=30))
+        if max_detections is not None and (checkpoint or max_detections < 1):
+            raise ValueError("Limited test imports require checkpoint=False and a positive limit")
         work_id = self.helper.api.work.initiate_work(self.helper.connect_id, "Vysion wallet detections")
         try:
             objects = {}
@@ -83,6 +92,10 @@ class WalletFeed:
                         seen += 1
                         for obj in wallet_objects(hit):
                             objects[obj.id] = obj
+                        if max_detections is not None and seen >= max_detections:
+                            break
+                if max_detections is not None and seen >= max_detections:
+                    break
                 batch += timedelta(days=1)
             if objects:
                 self.helper.send_stix2_bundle(
@@ -90,7 +103,9 @@ class WalletFeed:
                     work_id=work_id,
                 )
             self.helper.api.work.to_processed(work_id, f"Submitted {len(objects)} objects from {seen} detections")
-            self.helper.set_state({"last_run": int(time.time()), "window_end": now.isoformat(), "detections": seen})
+            if checkpoint:
+                self.helper.set_state({"last_run": int(time.time()), "window_end": now.isoformat(), "detections": seen})
+            return {"work_id": work_id, "objects": len(objects), "detections": seen}
         except Exception:
             self.helper.api.work.to_processed(work_id, "Wallet feed failed; checkpoint unchanged", True)
             raise

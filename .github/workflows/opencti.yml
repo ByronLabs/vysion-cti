@@ -1,0 +1,31 @@
+name: OpenCTI connectors
+
+on:
+  push:
+    branches: [develop, main]
+    paths: ["opencti/**", ".github/workflows/opencti.yml"]
+  pull_request:
+    paths: ["opencti/**", ".github/workflows/opencti.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: opencti
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose configuration
+        run: |
+          cp env.example .env
+          docker compose --profile vysion --profile vysion-wallets config -q
+      - name: Build connector images
+        run: docker compose --profile vysion --profile vysion-wallets build
+      - name: Run offline tests
+        run: |
+          docker run --rm --entrypoint python3 -v "$PWD:/tests:ro" \
+            vysion-opencti-enrichment:local -m unittest discover -s /tests/tests -v
