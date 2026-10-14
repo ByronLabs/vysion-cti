@@ -1,25 +1,38 @@
 # Vysion-CTI
 
 
-Welcome!
+Vysion integrations for threat intelligence platforms.
 
-This is our implementation of Vysion for MISP, specifically an enrichment module to use in your feed to get more information for your Cyber Intelligence tasks, searching for example by group or ransomware victim in our logs, which are updated 24/7. 
+## Integrations
 
-We also have API access to generate your own feed, both the installation and the enrichment module and feed can be found in /misp.
+### MISP
 
-You can request a demo or an api-key on our [website](https://byronlabs.io) or at [vysion.ai](https://vysion.ai).
+The [`misp/`](misp/) directory contains enrichment modules and feed tooling for
+MISP, including searches for ransomware groups and victims.
 
-# Modules
+### OpenCTI
 
-- Expansion modules
+The [`opencti/`](opencti/) directory contains three connectors:
 
+- **Observable enrichment:** document mentions, messaging profile associations
+  and optional leak metadata, represented as cited evidence notes. Captures of
+  the same page are grouped without automatically declaring it malicious.
+- **Ransomware feed:** hourly imports of the previous 24 hours, including victims,
+  threat actors, incidents, countries and sectors where available.
+- **Wallet detection feed:** an independently enabled feed of cryptocurrency
+  wallets and associated evidence notes.
 
-# References
+See the [OpenCTI installation and configuration guide](opencti/README.md) for
+Docker Compose setup, supported observables, source permissions and tests.
+
+You can request a demo or an API key on our [website](https://byronlabs.io).
+
+## References
 
 - https://github.com/MISP/misp-modules
 - https://developers.vysion.ai
 
-# Examples
+## MISP examples
 
 ![img1](https://github.com/ByronLabs/vysion-cti/assets/38075180/c52c8591-5b5e-4bd3-946a-9f124feaebb8)
 
