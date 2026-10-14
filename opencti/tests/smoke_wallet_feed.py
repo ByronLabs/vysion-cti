@@ -63,7 +63,7 @@ if __name__ == "__main__":
         if truncated or not day_hits:
             raise RuntimeError("Historical daily batch unavailable or incomplete")
         selected = next((hit for hit in day_hits
-                         if start <= detection_time(hit) <= end), None)
+                         if start <= detection_time(hit) <= end and wallet_objects(hit)), None)
         expected = wallet_objects(selected) if selected else []
         if not expected:
             raise RuntimeError("First daily detection has no supported wallet fields")

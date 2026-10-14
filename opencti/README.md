@@ -45,8 +45,9 @@ linked notes; execution details are available in the connector's **Works** tab.
 | User-Account | IM, leaks |
 | IPv4-Addr, IPv6-Addr, StixFile | Leaks |
 
-Wallets require one chain label: `chain:BTC`, `chain:ETH`, `chain:XMR`, `chain:XRP`,
-`chain:ZEC`, `chain:DOT`, `chain:BNB` or `chain:DASH`. Files use SHA-256, SHA-1 or MD5.
+Wallets require explicit chain labels: `chain:BTC`, `chain:ETH`, `chain:XMR`, `chain:XRP`,
+`chain:ZEC`, `chain:DOT`, `chain:BNB` or `chain:DASH`; each reported chain is queried.
+Files use SHA-256, SHA-1 or MD5.
 
 Notes group document captures by URL, title and observable, retaining dates,
 hashes and individual Vysion links. Leak notes link to the matching record in
@@ -70,14 +71,19 @@ and pagination limits are reported in Works.
 
 ## Feeds
 
-- **Ransomware:** hourly, rolling 24-hour window. Configure `CONNECTOR_RUN_EVERY`
-  and `VYSION_LOOKBACK_HOURS`. Deterministic STIX IDs make retries idempotent;
-  HTTP/schema/pagination failures preserve the checkpoint. Keep existing state
+- **Ransomware:** hourly, overlapping windows with up to 30 days of catch-up.
+  Configure `CONNECTOR_RUN_EVERY` and `VYSION_LOOKBACK_HOURS` (at most 24 hours).
+  Deterministic STIX IDs make retries idempotent; checkpoints advance only after
+  successful worker completion. Keep existing state
   when upgrading: legacy incidents with random IDs are not migrated automatically.
 - **Wallets:** hourly, initially the previous 24 hours, with overlapping queries
   and up to 30 days of catch-up. Set `VYSION_WALLET_PLATFORM` to `darknet` (default),
   `telegram`, `discord` or `all`; interval: `VYSION_WALLET_INTERVAL_SECONDS`.
-  IDs are deterministic. Check Works for worker errors after queue submission.
+  IDs are deterministic. Failed worker imports replay saved bundles automatically.
+
+Both feeds import bounded chunks. Malformed records are quarantined while healthy
+records import; rejected batches retry independently. Run one instance per
+connector ID. See [security and recovery](SECURITY.md) for limits and dependency exceptions.
 
 ## Tests
 

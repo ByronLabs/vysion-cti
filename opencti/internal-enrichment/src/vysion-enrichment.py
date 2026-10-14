@@ -1,7 +1,10 @@
 import os
 import html
 import json
-from urllib.parse import quote, urlsplit
+import re
+import threading
+import base64
+from urllib.parse import quote, unquote, urlsplit
 
 import yaml
 from stix2 import Bundle
@@ -12,6 +15,7 @@ from common.evidence import evidence_note
 
 
 CHAINS = {"BTC", "ETH", "XMR", "XRP", "ZEC", "DOT", "BNB", "DASH"}
+ENRICHMENT_LOCK = threading.Lock()
 
 
 def table_cell(value):
@@ -19,7 +23,8 @@ def table_cell(value):
         return "—"
     if isinstance(value, list):
         value = ", ".join(str(item) for item in value)
-    return html.escape(str(value)[:2000]).replace("|", "\\|").replace("\r", " ").replace("\n", " ")
+    value = html.escape(str(value)[:2000]).replace("\r", " ").replace("\n", " ")
+    return re.sub(r"([\\`*_{}\[\]()!|])", r"\\\1", value)
 
 
 class VysionIE:
@@ -41,7 +46,7 @@ class VysionIE:
         self.helper = OpenCTIConnectorHelper(config)
 
     @staticmethod
-    def wallet_chain(entity, stix_entity):
+    def wallet_chains(entity, stix_entity):
         # Address syntax is ambiguous (ETH vs BNB; BTC vs other Base58 chains).
         # Explicit chain labels take precedence; never guess the chain.
         labels = stix_entity.get("labels", []) + [
@@ -49,9 +54,16 @@ class VysionIE:
         ]
         chains = {label.split(":", 1)[1].upper() for label in labels
                   if isinstance(label, str) and label.lower().startswith("chain:")}
-        if len(chains) != 1 or not chains.issubset(CHAINS):
-            raise ValueError("Wallet requires exactly one chain:BTC/ETH/XMR/XRP/ZEC/DOT/BNB/DASH label")
-        return chains.pop()
+        if not chains or not chains.issubset(CHAINS):
+            raise ValueError("Wallet requires explicit supported chain labels")
+        return sorted(chains)
+
+    @classmethod
+    def wallet_chain(cls, entity, stix_entity):
+        chains = cls.wallet_chains(entity, stix_entity)
+        if len(chains) != 1:
+            raise ValueError("Multiple chains supplied; use wallet_chains")
+        return chains[0]
 
     def queries(self, entity, stix_entity):
         kind = entity["entity_type"]
@@ -79,13 +91,13 @@ class VysionIE:
             if self.leaks_enabled:
                 queries.append(("leaks", f"leak/email/{encoded}", {}))
         elif kind == "Cryptocurrency-Wallet":
-            chain = self.wallet_chain(entity, stix_entity)
-            suffix = f"wallet/{chain}/{encoded}"
-            queries.append(("documents", f"document/{suffix}", {}))
-            if self.im_enabled:
-                queries.append(("im", f"im/{suffix}", {}))
-            if self.leaks_enabled:
-                queries.append(("leaks", f"leak/{suffix}", {}))
+            for chain in self.wallet_chains(entity, stix_entity):
+                suffix = f"wallet/{chain}/{encoded}"
+                queries.append(("documents", f"document/{suffix}", {}))
+                if self.im_enabled:
+                    queries.append(("im", f"im/{suffix}", {}))
+                if self.leaks_enabled:
+                    queries.append(("leaks", f"leak/{suffix}", {}))
         elif kind in {"IPv4-Addr", "IPv6-Addr"}:
             if self.leaks_enabled:
                 queries.append(("leaks", f"leak/ip/{encoded}", {}))
@@ -204,6 +216,8 @@ class VysionIE:
 
     @classmethod
     def grouped_document_note(cls, hits, target, markings, previous_content=""):
+        if len(previous_content.encode()) > 1_000_000:
+            raise ValueError("Existing capture note exceeds retention byte limit")
         first = hits[0]
         page = first["page"]
         url = cls.document_source(first)
@@ -218,17 +232,55 @@ class VysionIE:
             for line in table.splitlines()[2:]:
                 if line.startswith("| ") and line.endswith(" |"):
                     captures[line.split(" | ", 1)[0][2:]] = line
+        # Structured capture metadata is authoritative; the table is presentation.
+        marker = re.search(r"<!-- vysion-captures-v1:([A-Za-z0-9+/=]+) -->", previous_content)
+        stored = {}
+        if marker:
+            if len(marker[1]) > 1_000_000:
+                raise ValueError("Stored capture metadata exceeds limit")
+            stored = json.loads(base64.b64decode(marker[1], validate=True))
+            if not isinstance(stored, dict) or len(stored) > 1000:
+                raise ValueError("Invalid stored capture metadata")
+            captures = {}
+            for record_id, capture in stored.items():
+                app_url = f"https://app.vysion.ai/document/{quote(record_id, safe='')}"
+                fields = [record_id, capture.get("detectionDate"), capture.get("language"), capture.get("sha256sum"), capture.get("sha1sum")]
+                captures[table_cell(record_id)] = "| " + " | ".join(table_cell(value) for value in fields) + f" | [Open capture]({app_url}) |"
         references = []
         if url and urlsplit(url).scheme in {"http", "https"}:
             references.append({"source_name": "Original source", "url": url})
         for hit in hits:
             capture = hit["page"]
             record_id = str(capture["id"])
+            stored[record_id] = {field: capture.get(field) for field in ("detectionDate", "language", "sha256sum", "sha1sum")}
             app_url = f"https://app.vysion.ai/document/{quote(record_id, safe='')}"
             fields = [record_id, capture.get("detectionDate"), capture.get("language"),
                       capture.get("sha256sum"), capture.get("sha1sum")]
             captures[table_cell(record_id)] = "| " + " | ".join(table_cell(value) for value in fields) + f" | [Open capture]({app_url}) |"
             references.append({"source_name": "Vysion", "external_id": record_id, "url": app_url})
+        if len(captures) > 1000:
+            raise ValueError("Capture retention limit reached; existing note preserved")
+        # Preserve legacy capture links too; do not depend on OpenCTI merge rules.
+        existing_ids = {reference.get("external_id") for reference in references}
+        for line in captures.values():
+            match = re.search(r"\[Open capture\]\((https://app\.vysion\.ai/document/[^)]+)\)", line)
+            if match:
+                record_id = unquote(match[1].rsplit("/", 1)[1])
+                if record_id not in existing_ids:
+                    references.append({"source_name": "Vysion", "external_id": record_id, "url": match[1]})
+                if record_id not in stored:
+                    fields = line[2:-2].split(" | ")
+                    if len(fields) == 6:
+                        stored[record_id] = {
+                            name: None if value == "—" else html.unescape(re.sub(r"\\(.)", r"\1", value))
+                            for name, value in zip(("detectionDate", "language", "sha256sum", "sha1sum"), fields[1:5])
+                        }
+        # A legacy table is retained during migration; structured data takes over
+        # once each retained capture has been observed or reconstructed.
+        if len(stored) == len(captures):
+            encoded = base64.b64encode(json.dumps(stored, sort_keys=True).encode()).decode()
+        else:
+            encoded = None
         data = page.get("url") or {}
         rows = [("Title", page.get("pageTitle")), ("Source URL", url),
                 ("Network", data.get("network") if isinstance(data, dict) else None),
@@ -238,11 +290,20 @@ class VysionIE:
         )
         content = "## Vysion evidence\n\n" + metadata + "\n\n" + section + header + "\n| --- | --- | --- | --- | --- | --- |\n" + "\n".join(captures[k] for k in sorted(captures))
         content += "\n\n> Captures collected from bounded search results; this is not necessarily the complete page history. A mention does not establish malicious activity or ownership."
+        if encoded:
+            content += f"\n\n<!-- vysion-captures-v1:{encoded} -->"
+        if len(content.encode()) > 1_000_000:
+            raise ValueError("Capture note size limit reached; existing note preserved")
         return evidence_note("documents", "page-group:" + key, target,
                              f"Vysion · {page.get('pageTitle') or 'Document captures'}",
                              content, markings, references)
 
     def _process_message(self, data):
+        # One writer per process; keep this connector ID exclusive to one instance.
+        with ENRICHMENT_LOCK:
+            return self._enrich(data)
+
+    def _enrich(self, data):
         entity = data["enrichment_entity"]
         stix_entity = data.get("stix_entity") or next(
             (obj for obj in data.get("stix_objects", []) if obj.get("id") == entity["standard_id"]), {}
@@ -270,10 +331,15 @@ class VysionIE:
             if source == "documents":
                 for group in self.document_groups(hits):
                     note = self.grouped_document_note(group, entity["standard_id"], markings)
-                    previous = self.helper.api.note.read(id=note.id, customAttributes="content")
-                    if previous:
+                    cache = getattr(self, "note_cache", {})
+                    previous = objects.get(note.id)
+                    previous_content = previous.content if previous else cache.get(note.id)
+                    if previous_content is None:
+                        previous = self.helper.api.note.read(id=note.id, customAttributes="content")
+                        previous_content = previous.get("content", "") if previous else ""
+                    if previous_content:
                         note = self.grouped_document_note(
-                            group, entity["standard_id"], markings, previous.get("content", "")
+                            group, entity["standard_id"], markings, previous_content
                         )
                     objects[note.id] = note
             else:
@@ -284,10 +350,23 @@ class VysionIE:
                     )
                     objects[note.id] = note
         if objects:
+            bundle = Bundle(objects=list(objects.values()), allow_custom=True).serialize()
+            if len(bundle.encode()) > 2_000_000:
+                raise ValueError("Enrichment bundle size limit exceeded")
             self.helper.send_stix2_bundle(
-                Bundle(objects=list(objects.values()), allow_custom=True).serialize(),
+                bundle,
                 update=True, work_id=self.helper.work_id,
             )
+            cache = getattr(self, "note_cache", {})
+            cache.update({key: note.content for key, note in objects.items() if "vysion:documents" in note.labels})
+            retained = {}
+            size = 0
+            for key, content in reversed(list(cache.items())):
+                size += len(content.encode())
+                if len(retained) >= 100 or size > 16_000_000:
+                    break
+                retained[key] = content
+            self.note_cache = dict(reversed(list(retained.items())))
         # Preserve existing analyst scores: an indexed mention is not an IOC.
         return f"Submitted {len(objects)} evidence notes; score unchanged. Limited sources: {', '.join(truncated) or 'none'}"
 

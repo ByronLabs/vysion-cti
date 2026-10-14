@@ -32,3 +32,17 @@ docker compose --profile vysion start connector-vysion-external
 Restart the scheduled connector even if a smoke test fails, then inspect Works.
 Rebuild images after code changes using
 `docker compose --profile vysion --profile vysion-wallets build`.
+
+## Durable delivery
+
+This test submits one historical wallet detection using the shared pending-work
+ledger and verifies actual worker confirmation. The normal cursor remains
+unchanged. If interrupted, leave pending state intact so the scheduled feed can
+finish the saved delivery. Do not run while the connector has a pending import.
+
+```sh
+docker compose --profile vysion-wallets stop connector-vysion-wallets
+docker compose --profile vysion-wallets run --rm --no-deps -T --entrypoint python3 \
+  -v "$PWD:/tests:ro" connector-vysion-wallets /tests/tests/smoke_delivery.py
+docker compose --profile vysion-wallets start connector-vysion-wallets
+```

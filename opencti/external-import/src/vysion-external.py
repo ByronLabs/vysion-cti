@@ -3,6 +3,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from stix2 import Bundle, ThreatActor, Relationship, Incident, Identity, Location
+from stix2.exceptions import STIXError
 import os
 import yaml
 from pycti import OpenCTIConnectorHelper, get_config_variable
@@ -10,6 +11,7 @@ from pycti import Identity as OpenCTIIdentity, ThreatActor as OpenCTIThreatActor
 
 from common.client import VysionClient, VysionError
 from common.evidence import stable_id, relation
+from common.imports import reconcile, submit, quarantine, window_bounds, is_quarantine_window, merge_rejected
 
 
 class VysionEI:
@@ -38,15 +40,20 @@ class VysionEI:
             "VYSION_API_KEY", ["vysion", "api_key"], config
         )
         self.client = VysionClient(self.vysion_api_url, self.vysion_api_key)
-        self.update_existing_data = (
-            os.getenv("CONNECTOR_UPDATE_EXISTING_DATA", "true").lower() == "true"
-        )
+        configured_update = get_config_variable("CONNECTOR_UPDATE_EXISTING_DATA", ["connector", "update_existing_data"], config)
+        if configured_update is None:
+            configured_update = True
+        if str(configured_update).lower() not in {"true", "false"}:
+            raise ValueError("CONNECTOR_UPDATE_EXISTING_DATA must be true or false")
+        self.update_existing_data = str(configured_update).lower() == "true"
         self.interval_seconds = self._parse_interval(
-            os.getenv("CONNECTOR_RUN_EVERY", "24h")
+            str(get_config_variable("CONNECTOR_RUN_EVERY", ["connector", "run_every"], config) or "1h")
         )
         self.lookback_hours = int(os.getenv("VYSION_LOOKBACK_HOURS", "24"))
         if self.lookback_hours <= 0:
             raise ValueError("VYSION_LOOKBACK_HOURS must be greater than zero")
+        if self.interval_seconds > self.lookback_hours * 3600 or self.lookback_hours > 24:
+            raise ValueError("Polling interval must not exceed lookback; lookback must be at most 24 hours")
 
     @staticmethod
     def _parse_interval(value):
@@ -88,22 +95,26 @@ class VysionEI:
         )
         if truncated:
             raise VysionError("Ransomware feed page limit reached; checkpoint unchanged")
-        for event in events:
-            self.validate_event(event)
         return events
 
     @classmethod
     def validate_event(cls, event):
         if not isinstance(event, dict):
             raise VysionError("Ransomware feed entry must be an object")
+        if event.get("id") is not None and (not isinstance(event["id"], str) or not 1 <= len(event["id"]) <= 200):
+            raise VysionError("Ransomware feed entry has an invalid ID")
         for field in ("companyName", "ransomwareGroup"):
             if not isinstance(event.get(field), str) or not event[field].strip():
                 raise VysionError(f"Ransomware feed entry missing {field}")
+            if len(event[field]) > 200:
+                raise VysionError("Ransomware name exceeds size limit")
         if cls.event_datetime(event) is None:
             raise VysionError("Ransomware feed entry has an invalid detectionDate")
         for field in ("country", "industry", "url", "text"):
             if event.get(field) is not None and not isinstance(event[field], str):
                 raise VysionError(f"Ransomware feed entry has an invalid {field}")
+            if isinstance(event.get(field), str) and len(event[field]) > (8000 if field == "text" else 2000):
+                raise VysionError("Ransomware metadata exceeds size limit")
 
     def get_feed_vysion(self, window_start, window_end):
         """Return Vysion events detected in a rolling UTC time window."""
@@ -115,8 +126,14 @@ class VysionEI:
 
         events = []
         seen = set()
+        self.rejected_records = []
         for batch in batches:
             for event in self.get_batch_events(batch):
+                try:
+                    self.validate_event(event)
+                except (ValueError, TypeError, VysionError) as error:
+                    quarantine(self.rejected_records, event, batch, error)
+                    continue
                 key = self.event_key(event)
                 detected_at = self.event_datetime(event)
                 if (
@@ -126,6 +143,8 @@ class VysionEI:
                 ):
                     seen.add(key)
                     events.append(event)
+                    if len(events) > 5000:
+                        raise VysionError("Ransomware window record limit reached; checkpoint unchanged")
         return events
 
     @staticmethod
@@ -263,14 +282,18 @@ class VysionEI:
         return objects
 
     def run_once(self, state, window_start=None, window_end=None, checkpoint=True, max_events=None):
+        if checkpoint:
+            state, ready = reconcile(self.helper, state)
+            if not ready:
+                return {"work_id": state["pending_import"]["work_id"], "events": 0, "object_ids": [], "pending": True}
+        quarantine_mode = checkpoint and is_quarantine_window(state)
         if window_start is not None or window_end is not None:
             if checkpoint or window_start is None or window_end is None:
                 raise ValueError("Historical test windows require both dates and checkpoint=False")
             if window_start.tzinfo is None or window_end.tzinfo is None or window_start >= window_end or window_end - window_start > timedelta(days=31):
                 raise ValueError("Invalid historical ransomware test window")
         else:
-            window_end = datetime.now(timezone.utc)
-            window_start = window_end - timedelta(hours=self.lookback_hours)
+            window_start, window_end = window_bounds(state, datetime.now(timezone.utc), self.lookback_hours)
         if max_events is not None and (checkpoint or max_events < 1):
             raise ValueError("Limited test imports require checkpoint=False and a positive limit")
         work_id = self.helper.api.work.initiate_work(
@@ -280,40 +303,57 @@ class VysionEI:
         try:
             imported_event_ids = self.get_legacy_imported_event_ids(state)
             feed_events = self.get_feed_vysion(window_start, window_end)
-            events = [
-                self.normalize_event(event)
-                for event in feed_events
-                if self.event_key(event) not in imported_event_ids
-            ]
+            rejected = list(getattr(self, "rejected_records", []))
+            events = []
+            resolved = set()
+            for event in feed_events:
+                if self.event_key(event) in imported_event_ids:
+                    resolved.add(self.event_key(event))
+                    continue
+                try:
+                    mapped = self.normalize_event(event)
+                    self.event_to_stix(mapped)
+                    events.append(mapped)
+                except (ValueError, TypeError, STIXError) as error:
+                    quarantine(rejected, event, window_end.date().isoformat(), error)
             if max_events is not None:
                 events = events[:max_events]
+            # One durable chunk per cycle; confirmed IDs avoid reprocessing it.
+            remaining = len(events) > 50
+            events = events[:50]
+            resolved.update(event["event_id"] for event in events)
             objects = {obj.id: obj for event in events for obj in self.event_to_stix(event)}
+            rejected = merge_rejected(state.get("rejected_records", []), rejected, resolved,
+                                      window_start.date().isoformat() if quarantine_mode else None)
+            success_state = {
+                **state,
+                "last_run": state.get("last_run", 0) if quarantine_mode and not remaining else (int(time.time()) if not remaining and (datetime.now(timezone.utc) - window_end).total_seconds() < 60 else 0),
+                "events_imported": len(events), "events_seen": len(feed_events),
+                "imported_event_ids": list(dict.fromkeys(list(state.get("imported_event_ids") or sorted(imported_event_ids)) + [event["event_id"] for event in events]))[-10000:],
+                "stix_id_scheme": "deterministic-v1", "rejected_records": rejected,
+            }
+            if not remaining:
+                if not quarantine_mode:
+                    success_state.update(window_start=window_start.isoformat(), window_end=window_end.isoformat())
+                success_state["quarantine_due"] = bool(rejected) and not quarantine_mode
+                success_state.pop("retry_window", None)
+            else:
+                success_state["retry_window"] = {"start": window_start.isoformat(), "end": window_end.isoformat(), "mode": "quarantine" if quarantine_mode else "normal"}
             if objects:
                 bundle = Bundle(objects=list(objects.values()), allow_custom=True).serialize()
-                self.helper.send_stix2_bundle(
-                    bundle, update=self.update_existing_data, work_id=work_id
-                )
-            state = {
-                "last_run": int(time.time()),
-                "window_start": window_start.isoformat(),
-                "window_end": window_end.isoformat(),
-                "events_imported": len(events),
-                "events_seen": len(feed_events),
-                "imported_event_ids": list(dict.fromkeys(
-                    list(state.get("imported_event_ids") or sorted(imported_event_ids))
-                    + [event["event_id"] for event in events]
-                ))[-1000:],
-                "stix_id_scheme": "deterministic-v1",
-            }
-            self.helper.api.work.to_processed(
-                work_id,
-                f"Imported {len(events)} new ransomware events from the last "
-                f"{self.lookback_hours} hours ({len(feed_events)} seen)",
-            )
-            if checkpoint:
-                self.helper.set_state(state)
+                if checkpoint:
+                    _, ready = submit(self.helper, state, bundle, success_state, work_id, self.update_existing_data)
+                else:
+                    self.helper.send_stix2_bundle(bundle, update=self.update_existing_data, work_id=work_id)
+                    self.helper.api.work.to_processed(work_id, "Submitted historical ransomware test")
+                    ready = True
+            else:
+                self.helper.api.work.to_processed(work_id, "No new events; rejected records retained for retry" if rejected else "No new events", bool(rejected))
+                if checkpoint:
+                    self.helper.set_state(success_state)
+                ready = True
             self.helper.log_info(f"Submitted {len(events)} ransomware events")
-            return {"work_id": work_id, "events": len(events), "object_ids": list(objects)}
+            return {"work_id": work_id, "events": len(events), "object_ids": list(objects), "pending": not ready}
         except Exception as error:
             self.helper.api.work.to_processed(work_id, f"Import failed: {type(error).__name__}; checkpoint unchanged", True)
             raise
@@ -327,7 +367,7 @@ class VysionEI:
                 state = self.helper.get_state() or {}
                 last_run = state.get("last_run")
                 elapsed = int(time.time()) - last_run if last_run else None
-                if elapsed is None or elapsed >= self.interval_seconds:
+                if state.get("pending_import") or state.get("quarantine_due") or elapsed is None or elapsed >= self.interval_seconds:
                     self.run_once(state)
                 else:
                     remaining = self.interval_seconds - elapsed
@@ -335,7 +375,7 @@ class VysionEI:
                         f"Next Vysion ransomware feed run in {remaining} seconds"
                     )
             except Exception as e:
-                self.helper.log_error(f"Error while running the connector: {e}")
+                self.helper.log_error(f"Ransomware import failed: {type(e).__name__}")
 
             if self.helper.connect_run_and_terminate:
                 return

@@ -21,11 +21,11 @@ class InternalEnrichmentConnector:
 
         update_existing_data = os.environ.get("CONNECTOR_UPDATE_EXISTING_DATA", "false")
         if update_existing_data.lower() in ["true", "false"]:
-            self.update_existing_data = update_existing_data.lower()
+            self.update_existing_data = update_existing_data.lower() == "true"
         else:
-            msg = f"Error when grabbing CONNECTOR_UPDATE_EXISTING_DATA environment variable: '{self.interval}'. It SHOULD be either `true` or `false`. `false` is assumed. "
+            msg = "Invalid CONNECTOR_UPDATE_EXISTING_DATA; false is assumed."
             self.helper.log_warning(msg)
-            self.update_existing_data = "false"
+            self.update_existing_data = False
 
     def _process_message(self, data: Dict):
         # entity_id = data["entity_id"]

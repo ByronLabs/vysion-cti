@@ -25,15 +25,16 @@ class ExternalImportConnector:
 
         # Specific connector attributes for external import connectors
         try:
-            self.interval = os.environ.get("CONNECTOR_RUN_EVERY", None).lower()
+            self.interval = os.environ.get("CONNECTOR_RUN_EVERY", "1h").lower()
             self.helper.log_info(
                 f"Verifying integrity of the CONNECTOR_RUN_EVERY value: '{self.interval}'"
             )
             unit = self.interval[-1]
             if unit not in ["d", "h", "m", "s"]:
                 raise TypeError
-            int(self.interval[:-1])
-        except TypeError as _:
+            if int(self.interval[:-1]) <= 0:
+                raise ValueError("Interval must be positive")
+        except (TypeError, ValueError, IndexError) as _:
             msg = f"Error ({_}) when grabbing CONNECTOR_RUN_EVERY environment variable: '{self.interval}'. It SHOULD be a string in the format '7d', '12h', '10m', '30s' where the final letter SHOULD be one of 'd', 'h', 'm', 's' standing for day, hour, minute, second respectively. "
             self.helper.log_error(msg)
             raise ValueError(msg)
@@ -46,15 +47,12 @@ class ExternalImportConnector:
             self.update_existing_data = (
                 True if update_existing_data.lower() == "true" else False
             )
-        elif isinstance(update_existing_data, bool) and update_existing_data.lower in [
-            True,
-            False,
-        ]:
+        elif isinstance(update_existing_data, bool):
             self.update_existing_data = update_existing_data
         else:
             msg = f"Error when grabbing CONNECTOR_UPDATE_EXISTING_DATA environment variable: '{update_existing_data}'. It SHOULD be either `true` or `false`. `false` is assumed. "
             self.helper.log_warning(msg)
-            self.update_existing_data = "false"
+            self.update_existing_data = False
 
     def _collect_intelligence(self) -> list:
         """Collect intelligence from the source"""

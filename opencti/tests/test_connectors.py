@@ -2,6 +2,7 @@ import importlib.util
 from pathlib import Path
 import sys
 import unittest
+import json
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 from pycti import OpenCTIConnectorHelper
@@ -34,6 +35,7 @@ class ClientTests(unittest.TestCase):
     def response(self, status, hits=None, total=None):
         response = Mock(status_code=status, headers={})
         response.json.return_value = {"data": {"hits": hits or [], "total": total or 0}, "error": None}
+        response.iter_content.side_effect = lambda **kwargs: iter([json.dumps(response.json.return_value).encode()])
         return response
 
     def test_retry_then_success(self):
@@ -83,6 +85,11 @@ class ClientTests(unittest.TestCase):
         with self.assertRaises(VysionError):
             client.get("x")
         self.assertEqual(client.session.get.call_count, 1)
+
+    def test_repeated_page_is_not_a_complete_import(self):
+        client = self.client([self.response(200, [{"id": "same"}], 2)] * 2)
+        with self.assertRaises(VysionError):
+            client.search("x", page_size=1)
 
 
 class ModelTests(unittest.TestCase):
@@ -229,6 +236,7 @@ class ModelTests(unittest.TestCase):
         connector.client = Mock()
         connector.client.search.return_value = ([], True)
         connector.helper = Mock()
+        connector.helper.api.query.return_value = {"data": {"work": {"status": "complete", "completed_number": 1, "errors": []}}}
         connector.helper.get_state.return_value = {}
         with self.assertRaises(VysionError):
             connector.run_once()

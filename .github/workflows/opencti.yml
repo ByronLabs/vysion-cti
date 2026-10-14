@@ -14,11 +14,15 @@ permissions:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: opencti
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - name: Validate Compose configuration
         run: |
           cp env.example .env
@@ -29,3 +33,31 @@ jobs:
         run: |
           docker run --rm --entrypoint python3 -v "$PWD:/tests:ro" \
             vysion-opencti-enrichment:local -m unittest discover -s /tests/tests -v
+      - name: Audit dependencies and Python code
+        run: |
+          python3 -m venv "$RUNNER_TEMP/vysion-security"
+          "$RUNNER_TEMP/vysion-security/bin/pip" install pip-audit==2.10.1 bandit==1.9.4
+          python3 -c 'from datetime import date; assert date.today() <= date(2026, 12, 31), "Review the setuptools advisory exception in SECURITY.md"'
+          # pycti constrains setuptools to 82.0.x. This advisory concerns macOS
+          # source-distribution builds, not our Linux runtime. See SECURITY.md.
+          for lock in internal-enrichment/requirements.lock external-import/requirements.lock; do
+            "$RUNNER_TEMP/vysion-security/bin/pip-audit" -r "$lock" --no-deps --disable-pip \
+              --ignore-vuln CVE-2026-59890 --progress-spinner off
+          done
+          "$RUNNER_TEMP/vysion-security/bin/bandit" -r common internal-enrichment/src external-import/src wallet-feed/src
+      - name: Scan Git history for secrets
+        run: |
+          curl --fail --silent --show-error --location \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
+            -o "$RUNNER_TEMP/gitleaks.tar.gz"
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" git --redact=100 --log-opts=--all ..
+      - name: Scan runtime images
+        run: |
+          for image in vysion-opencti-enrichment:local vysion-opencti-ransomware:local vysion-opencti-wallets:local; do
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+              -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" \
+              aquasec/trivy:0.76.0@sha256:2416d1f74045b57274df1a340eee6b510cacd73c66a6ccb8da092b117eb7d222 \
+              image --scanners vuln --exit-code 1 --severity HIGH,CRITICAL "$image"
+          done

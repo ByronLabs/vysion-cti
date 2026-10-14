@@ -17,6 +17,13 @@ services:
       CONNECTOR_LOG_LEVEL: info
     networks: [opencti]
     restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m,uid=10001,gid=10001"]
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
 
   connector-vysion-enrichment:
     profiles: ["vysion"]
@@ -39,6 +46,13 @@ services:
       VYSION_PAGE_SIZE: ${VYSION_PAGE_SIZE:-10}
     networks: [opencti]
     restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m,uid=10001,gid=10001"]
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
 
   connector-vysion-wallets:
     profiles: ["vysion-wallets"]
@@ -57,6 +71,13 @@ services:
       VYSION_WALLET_INTERVAL_SECONDS: ${VYSION_WALLET_INTERVAL_SECONDS:-3600}
     networks: [opencti]
     restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m,uid=10001,gid=10001"]
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
 
 networks:
   opencti:

@@ -28,6 +28,7 @@ class RansomwareTests(unittest.TestCase):
         obj = ransomware.VysionEI.__new__(ransomware.VysionEI)
         obj.client = Mock()
         obj.helper = Mock()
+        obj.helper.api.query.return_value = {"data": {"work": {"status": "complete", "completed_number": 5, "errors": []}}}
         obj.lookback_hours = 24
         obj.update_existing_data = True
         return obj
@@ -88,8 +89,9 @@ class RansomwareTests(unittest.TestCase):
     def test_schema_validation_before_import(self):
         obj = self.connector()
         obj.client.search.return_value = ([event(detected="bad")], False)
-        with self.assertRaises(VysionError):
-            obj.get_batch_events("2026-10-14")
+        now = datetime.now(timezone.utc)
+        self.assertEqual(obj.get_feed_vysion(now - timedelta(hours=1), now), [])
+        self.assertTrue(obj.rejected_records)
 
     def test_import_then_repeat_skipped(self):
         obj = self.connector()
@@ -111,7 +113,9 @@ class RansomwareTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             obj.run_once({})
         first = json.loads(obj.helper.send_stix2_bundle.call_args.args[0])
-        obj.helper.set_state.assert_not_called()
+        saved = obj.helper.set_state.call_args.args[0]
+        self.assertEqual(saved["pending_import"]["phase"], "prepared")
+        self.assertNotIn("imported_event_ids", saved)
         self.assertTrue(obj.helper.api.work.to_processed.call_args.args[2])
         obj.helper.send_stix2_bundle.side_effect = None
         obj.run_once({})
@@ -136,9 +140,9 @@ class RansomwareTests(unittest.TestCase):
     def test_checkpoint_retains_newest_ids_in_order(self):
         obj = self.connector()
         obj.get_feed_vysion = Mock(return_value=[event("new")])
-        obj.run_once({"imported_event_ids": [f"old-{index}" for index in range(1000)]})
+        obj.run_once({"imported_event_ids": [f"old-{index}" for index in range(10000)]})
         saved = obj.helper.set_state.call_args.args[0]["imported_event_ids"]
-        self.assertEqual(len(saved), 1000)
+        self.assertEqual(len(saved), 10000)
         self.assertEqual(saved[0], "old-1")
         self.assertEqual(saved[-1], "new")
 

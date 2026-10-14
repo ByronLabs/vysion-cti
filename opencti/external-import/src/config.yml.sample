@@ -13,4 +13,5 @@ connector:
   scope: identity,incident,threat-actor,relationship,location,sector
   confidence_level: 70
   update_existing_data: true
+  run_every: 1h
   log_level: info
