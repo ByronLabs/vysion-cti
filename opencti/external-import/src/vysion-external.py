@@ -1,6 +1,6 @@
 import re
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from stix2 import Bundle, ThreatActor, Relationship, Incident, Identity, Location
 from stix2.exceptions import STIXError
@@ -286,6 +286,13 @@ class VysionEI:
             state, ready = reconcile(self.helper, state)
             if not ready:
                 return {"work_id": state["pending_import"]["work_id"], "events": 0, "object_ids": [], "pending": True}
+        cycle_now = datetime.now(timezone.utc)
+        if checkpoint and not state.get("window_end") and state.get("last_batch"):
+            # Legacy last_batch is the last imported UTC calendar day. Retain
+            # its ID suppression, but recover the gap after that day as well.
+            legacy_day = date.fromisoformat(state["last_batch"])
+            legacy_end = datetime.combine(legacy_day + timedelta(days=1), datetime.min.time(), timezone.utc)
+            state = {**state, "window_end": min(legacy_end, cycle_now).isoformat()}
         quarantine_mode = checkpoint and is_quarantine_window(state)
         if window_start is not None or window_end is not None:
             if checkpoint or window_start is None or window_end is None:
@@ -293,7 +300,8 @@ class VysionEI:
             if window_start.tzinfo is None or window_end.tzinfo is None or window_start >= window_end or window_end - window_start > timedelta(days=31):
                 raise ValueError("Invalid historical ransomware test window")
         else:
-            window_start, window_end = window_bounds(state, datetime.now(timezone.utc), self.lookback_hours)
+            window_start, window_end = window_bounds(state, cycle_now, self.lookback_hours)
+        current_window = window_end == cycle_now
         if max_events is not None and (checkpoint or max_events < 1):
             raise ValueError("Limited test imports require checkpoint=False and a positive limit")
         work_id = self.helper.api.work.initiate_work(
@@ -327,7 +335,7 @@ class VysionEI:
                                       window_start.date().isoformat() if quarantine_mode else None)
             success_state = {
                 **state,
-                "last_run": state.get("last_run", 0) if quarantine_mode and not remaining else (int(time.time()) if not remaining and (datetime.now(timezone.utc) - window_end).total_seconds() < 60 else 0),
+                "last_run": state.get("last_run", 0) if quarantine_mode and not remaining else (int(time.time()) if not remaining and current_window else 0),
                 "events_imported": len(events), "events_seen": len(feed_events),
                 "imported_event_ids": list(dict.fromkeys(list(state.get("imported_event_ids") or sorted(imported_event_ids)) + [event["event_id"] for event in events]))[-10000:],
                 "stix_id_scheme": "deterministic-v1", "rejected_records": rejected,

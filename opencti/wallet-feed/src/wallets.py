@@ -77,6 +77,7 @@ class WalletFeed:
 
     def run_once(self, window_start=None, window_end=None, checkpoint=True, max_detections=None):
         now = datetime.now(timezone.utc)
+        cycle_now = now
         state = self.helper.get_state() or {}
         if checkpoint:
             state, ready = reconcile(self.helper, state)
@@ -91,6 +92,7 @@ class WalletFeed:
                 raise ValueError("Invalid historical wallet test window")
         else:
             start, now = window_bounds(state, now)
+        current_window = now == cycle_now
         if max_detections is not None and (checkpoint or max_detections < 1):
             raise ValueError("Limited test imports require checkpoint=False and a positive limit")
         work_id = self.helper.api.work.initiate_work(self.helper.connect_id, "Vysion wallet detections")
@@ -148,7 +150,7 @@ class WalletFeed:
                 batch += timedelta(days=1)
             rejected = merge_rejected(state.get("rejected_records", []), rejected, resolved,
                                       start.date().isoformat() if quarantine_mode else None)
-            success = {**state, "last_run": state.get("last_run", 0) if quarantine_mode and not remaining else (int(time.time()) if not remaining and (datetime.now(timezone.utc) - now).total_seconds() < 60 else 0),
+            success = {**state, "last_run": state.get("last_run", 0) if quarantine_mode and not remaining else (int(time.time()) if not remaining and current_window else 0),
                        "detections": seen, "rejected_records": rejected,
                        "imported_detection_ids": list(dict.fromkeys(state.get("imported_detection_ids", []) + selected_ids))[-10000:]}
             if not remaining:

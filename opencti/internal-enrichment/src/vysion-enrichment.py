@@ -358,7 +358,10 @@ class VysionIE:
                 update=True, work_id=self.helper.work_id,
             )
             cache = getattr(self, "note_cache", {})
-            cache.update({key: note.content for key, note in objects.items() if "vysion:documents" in note.labels})
+            for key, note in objects.items():
+                if "vysion:documents" in note.labels:
+                    cache.pop(key, None)
+                    cache[key] = note.content
             retained = {}
             size = 0
             for key, content in reversed(list(cache.items())):

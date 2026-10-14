@@ -203,6 +203,33 @@ class MetadataTests(unittest.TestCase):
         self.assertNotIn("| edited |", updated.content)
         self.assertEqual({r.external_id for r in updated.external_references if getattr(r, "external_id", None)}, {"one", "two"})
 
+    def test_updated_old_cache_entry_survives_eviction_and_stale_api(self):
+        target = "email-addr--b689de09-1d7c-5dc8-8e36-198e019f45a3"
+        first = {"page": {"id": "one", "pageTitle": "Title", "url": {"url": "https://example.com"}}}
+        second = {"page": {**first["page"], "id": "two"}}
+        obj = enrichment.VysionIE.__new__(enrichment.VysionIE)
+        obj.helper = helper()
+        obj.max_tlp = "TLP:GREEN"
+        obj.im_enabled = False
+        obj.leaks_enabled = False
+        obj.client = Mock()
+        previous = enrichment.VysionIE.grouped_document_note([first], target, [])
+        obj.note_cache = {previous.id: previous.content, **{f"other-{i}": "cached" for i in range(99)}}
+        obj.client.search.return_value = ([second, {"page": {"id": "new", "pageTitle": "Other", "url": {"url": "https://example.com/other"}}}], False)
+        obj.helper.api.note.read.return_value = None
+        entity = {"standard_id": target, "entity_type": "Email-Addr", "observable_value": "test@example.com"}
+        obj._process_message({"enrichment_entity": entity})
+        self.assertEqual(len(obj.note_cache), 100)
+        self.assertIn(previous.id, obj.note_cache)
+        self.assertIn("/document/two", obj.note_cache[previous.id])
+        self.assertNotIn("other-0", obj.note_cache)
+        obj.client.search.return_value = ([first], False)
+        obj.helper.api.note.read.return_value = {"content": previous.content}
+        obj.helper.api.note.read.reset_mock()
+        obj._process_message({"enrichment_entity": entity})
+        obj.helper.api.note.read.assert_not_called()
+        self.assertIn("/document/two", obj.note_cache[previous.id])
+
 
 class ConfigurationTests(unittest.TestCase):
     def test_yaml_false_is_honored_and_environment_overrides(self):
@@ -269,6 +296,71 @@ class RansomwareRecoveryTests(unittest.TestCase):
         result = obj.run_once(pending)
         self.assertTrue(result["pending"])
         obj.get_feed_vysion.assert_not_called()
+
+    def test_legacy_downtime_recovers_gap_and_suppresses_last_batch(self):
+        obj = self.connector()
+        legacy = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=3)
+        old = self.hit("legacy", detectionDate=legacy.isoformat())
+        new = self.hit("gap", detectionDate=(legacy + timedelta(days=1, hours=12)).isoformat())
+        obj.get_batch_events = Mock(return_value=[old])
+        obj.get_feed_vysion = Mock(return_value=[old, new])
+        state = {"last_batch": legacy.date().isoformat()}
+        obj.run_once(state)
+        start, end = obj.get_feed_vysion.call_args.args
+        self.assertEqual(start, legacy)
+        self.assertEqual(end, legacy + timedelta(days=2))
+        self.assertEqual(set(obj.helper.state["imported_event_ids"]), {"legacy", "gap"})
+        self.assertEqual(obj.helper.state["events_imported"], 1)
+        self.assertNotIn("window_end", state)
+
+    def test_expired_legacy_checkpoint_fails_without_importing(self):
+        obj = self.connector()
+        legacy = datetime.now(timezone.utc) - timedelta(days=33)
+        with self.assertRaises(VysionError):
+            obj.run_once({"last_batch": legacy.date().isoformat()})
+        obj.helper.send_stix2_bundle.assert_not_called()
+        obj.helper.set_state.assert_not_called()
+
+    def test_modern_checkpoint_takes_precedence_over_legacy_batch(self):
+        obj = self.connector()
+        now = datetime.now(timezone.utc)
+        previous = now - timedelta(hours=1)
+        obj.get_feed_vysion = Mock(return_value=[])
+        obj.run_once({"last_batch": "2020-01-01", "window_end": previous.isoformat(), "imported_event_ids": ["known"]})
+        self.assertEqual(obj.get_feed_vysion.call_args.args[0], previous - timedelta(hours=24))
+
+
+class PollingTests(unittest.TestCase):
+    def test_slow_current_window_keeps_interval_for_both_feeds(self):
+        for module in (wallets, ransomware):
+            with self.subTest(module=module.__name__):
+                started = datetime(2026, 10, 14, 12, tzinfo=timezone.utc)
+                finished = started + timedelta(minutes=2)
+                state = {"window_end": (started - timedelta(hours=1)).isoformat()}
+                if module is wallets:
+                    obj = WalletRecoveryTests().connector()
+                    obj.helper.state = state
+                    obj.client.search.return_value = ([], False)
+                    run = obj.run_once
+                else:
+                    obj = RansomwareRecoveryTests().connector()
+                    obj.get_feed_vysion = Mock(return_value=[])
+                    run = lambda: obj.run_once(state)
+                with patch.object(module, "datetime", wraps=datetime) as clock, patch.object(module.time, "time", return_value=finished.timestamp()):
+                    clock.now.side_effect = [started, finished]
+                    run()
+                    self.assertEqual(obj.helper.state["last_run"], int(finished.timestamp()))
+                    self.assertEqual(clock.now.call_count, 1)
+
+    def test_historical_catchup_still_runs_without_waiting_interval(self):
+        started = datetime(2026, 10, 14, 12, tzinfo=timezone.utc)
+        obj = WalletRecoveryTests().connector()
+        obj.helper.state = {"window_end": (started - timedelta(days=3)).isoformat()}
+        obj.client.search.return_value = ([], False)
+        with patch.object(wallets, "datetime", wraps=datetime) as clock:
+            clock.now.return_value = started
+            obj.run_once()
+        self.assertEqual(obj.helper.state["last_run"], 0)
 
 
 class ResponseLimitsTests(unittest.TestCase):
