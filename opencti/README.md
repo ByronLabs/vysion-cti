@@ -1,162 +1,86 @@
 # Vysion for OpenCTI
 
-Three connectors for an existing OpenCTI installation:
-
 | Connector | Purpose | Compose profile |
 | --- | --- | --- |
 | Ransomware feed | Incidents, victims, threat actors, countries and sectors | `vysion` |
-| Observable enrichment | Cited document, messaging profile and optional leak evidence | `vysion` |
+| Observable enrichment | Document, messaging profile and leak evidence | `vysion` |
 | Wallet detections | Cryptocurrency wallets and evidence notes | `vysion-wallets` |
 
-## Requirements
+## Setup
 
-- A running OpenCTI platform, workers and RabbitMQ. Tested with OpenCTI
-  `7.261008.0`; Python dependencies pin `pycti==7.260917.0`.
-- Docker with Compose v2.
-- An OpenCTI API token with permissions to read observables, register connectors,
-  manage connector works and import the relevant STIX objects.
-- A Vysion API key authorised for each enabled source.
-- Network access to OpenCTI, its advertised RabbitMQ endpoint and the Vysion API.
-
-This Compose file deploys connectors only, not an OpenCTI platform.
-
-## Installation
-
-From the repository root:
+Requires Docker Compose v2, a running OpenCTI platform with workers and RabbitMQ,
+an OpenCTI API token with connector/import permissions, and a Vysion API key.
+Tested with OpenCTI `7.261008.0`; dependencies pin `pycti==7.260917.0`.
+This deployment includes connectors only.
 
 ```sh
 cd opencti
 cp env.example .env
 ```
 
-Edit `.env` with your API credentials and three distinct, stable UUIDv4 connector
-IDs. Generate each UUID with `python3 -c 'import uuid; print(uuid.uuid4())'`.
-The wallet ID is only required when its profile is enabled. Keep `.env` private;
-never commit it. Do not overwrite an existing configuration when upgrading.
+Configure credentials, a different UUIDv4 for each connector, and:
+- `OPENCTI_URL`: platform URL reachable from containers.
+- `OPENCTI_DOCKER_NETWORK`: existing network shared with OpenCTI and RabbitMQ.
 
-Set `OPENCTI_DOCKER_NETWORK` to an existing Docker network shared by OpenCTI and
-RabbitMQ. Find the network names with `docker network ls`. The default
-`opencti_default` is an example, not a guaranteed name. Set `OPENCTI_URL` to the
-platform URL reachable from containers (e.g. `http://opencti:8080`), not the
-host's `localhost` address. The broker hostname advertised by OpenCTI must also
-resolve from these containers.
-
-Start ransomware import and manual enrichment:
+Keep `.env` private. When migrating, retain connector IDs and stop old instances
+before starting these. The advertised RabbitMQ hostname must be reachable.
 
 ```sh
+# Ransomware feed and manual enrichment
 docker compose --profile vysion up -d --build
-```
 
-Enable wallet detection separately:
-
-```sh
+# Optional wallet feed
 docker compose --profile vysion-wallets up -d --build connector-vysion-wallets
 ```
 
-Both commands use the standalone Compose project in this directory. If migrating
-from another deployment, stop the old connector instances before starting these
-with the same IDs. Retain the IDs to keep existing connector state; never run two
-instances with the same ID against one platform.
+## Enrichment
 
-## Observable enrichment
+Select **Enrichment → Vysion Enrichment** on an observable. Results appear in
+linked notes; execution details are available in the connector's **Works** tab.
 
-Open an observable in OpenCTI, select **Enrichment → Vysion Enrichment**, and
-confirm execution. Check the connector's **Works** tab and the observable's
-linked notes. `State: null` and no scheduled run are normal for manual enrichment.
+| Observable | Sources |
+| --- | --- |
+| Url, Domain-Name, Hostname | Documents |
+| Email-Addr, Cryptocurrency-Wallet | Documents, IM, leaks |
+| User-Account | IM, leaks |
+| IPv4-Addr, IPv6-Addr, StixFile | Leaks |
 
-| OpenCTI type | Documents | Messaging profiles | Leaks (opt-in) |
-| --- | --- | --- | --- |
-| Url | Captures of the exact URL | — | — |
-| Domain-Name / Hostname | Quoted mention search | — | — |
-| Email-Addr | Email lookup | Email association | Email lookup |
-| Cryptocurrency-Wallet | Chain/address lookup | Chain/address association | Chain/address lookup |
-| User-Account | — | Username search | Username lookup |
-| IPv4-Addr / IPv6-Addr | — | — | IP lookup |
-| StixFile | — | — | SHA-256, SHA-1 or MD5 lookup |
+Wallets require one chain label: `chain:BTC`, `chain:ETH`, `chain:XMR`, `chain:XRP`,
+`chain:ZEC`, `chain:DOT`, `chain:BNB` or `chain:DASH`. Files use SHA-256, SHA-1 or MD5.
 
-Wallets require exactly one label specifying the chain: `chain:BTC`, `chain:ETH`,
-`chain:XMR`, `chain:XRP`, `chain:ZEC`, `chain:DOT`, `chain:BNB` or `chain:DASH`.
-The connector does not guess chains from ambiguous address formats.
+Notes group document captures by URL, title and observable, retaining dates,
+hashes and individual Vysion links. Leak notes link to the matching record in
+Vysion; credentials and file contents are not imported. Scores remain unchanged.
 
-Document captures are grouped by exact source URL, title and enriched observable.
-Each note has page metadata and a table of detection dates, languages, hashes
-and individual `https://app.vysion.ai/document/{id}` links. Subsequent enrichment
-retains previously collected captures. Missing source URLs prevent grouping.
-Legacy per-document notes are not deleted automatically. Leak notes link to
-`https://app.vysion.ai/leaks/{id}` with the matched value highlighted. File access
-remains in the authenticated Vysion app; no temporary download URL is stored.
-IM notes link to the app homepage. Both include selected evidence metadata.
+### Configuration
 
-A mention is not proof of maliciousness, ownership or real-world identity.
-Enrichment does not create threat indicators or change analyst scores.
+Edit `.env`, then run `docker compose --profile vysion up -d connector-vysion-enrichment`.
 
-### Source and sharing controls
-
-Set these values in `.env`, then recreate the enrichment container:
-
-```sh
-docker compose --profile vysion up -d connector-vysion-enrichment
-```
-
-| Variable | Default | Behaviour |
+| Variable | Default | Purpose |
 | --- | --- | --- |
-| `VYSION_ENABLE_IM` | `true` | Messaging profile searches |
-| `VYSION_ENABLE_LEAKS` | `false` | Leak metadata searches; required for IPs and files |
-| `VYSION_MAX_TLP` | `TLP:GREEN` | Reject higher-TLP observables before external requests |
-| `VYSION_MAX_PAGES` | `5` | Maximum pages per enrichment source |
+| `VYSION_ENABLE_IM` | `true` | Messaging profile lookups |
+| `VYSION_ENABLE_LEAKS` | `false` | Search leaks for matching observables |
+| `VYSION_MAX_TLP` | `TLP:GREEN` | Maximum TLP allowed for external queries |
+| `VYSION_MAX_PAGES` | `5` | Pages per source |
 | `VYSION_PAGE_SIZE` | `10` | Results per page; leaks uses five |
-| `VYSION_HTTP_ATTEMPTS` | `3` | Shared-client bounded retry attempts |
+| `VYSION_HTTP_ATTEMPTS` | `3` | Enrichment/wallet HTTP retry limit |
 
-The `whitelist` label skips enrichment. All TLP markings are checked and object
-markings are propagated. Leak imports exclude credentials, highlights, download
-URLs and full leaked content. Source errors fail the work rather than reporting
-zero matches. Pagination limits are reported in the work completion message.
+The `whitelist` label skips enrichment. Markings are propagated; source errors
+and pagination limits are reported in Works.
 
-The shared enrichment/wallet HTTP client uses HTTPS, rejects redirects, validates
-schemas, and retries network failures, HTTP 429 and selected 5xx responses. It
-honours Retry-After up to 60 seconds. Connect/read deadlines are 10/45 seconds.
-401/403 are not retried; disable a source explicitly if your key cannot access it.
+## Feeds
 
-## Ransomware feed
-
-Polls hourly using daily API batches intersecting a rolling 24-hour UTC window.
-Imports incidents, victim organisations and ransomware threat actors; countries
-and sectors are included where available. Configure `CONNECTOR_RUN_EVERY`
-(default `1h`) and `VYSION_LOOKBACK_HOURS` (default `24`) in `.env`.
-
-The feed saves imported event IDs in connector state. It still uses random STIX
-IDs for some objects: resetting state or retrying a partially imported batch can
-duplicate incidents. Do not clear state merely to refresh existing data.
-This legacy importer does not use the shared HTTP client.
-
-## Wallet detection feed
-
-The independent profile is opt-in because import volume can be substantial.
-Set `VYSION_WALLET_PLATFORM` to `darknet` (default), `telegram`, `discord` or `all`.
-Set `VYSION_WALLET_INTERVAL_SECONDS` to change the hourly polling interval.
-
-Uses `feed/{platform}/wallets` with `range_type=day`. It starts with the previous
-24 hours, overlaps the prior checkpoint by 24 hours, and catches up after downtime
-up to 30 days. Wallet and note IDs are deterministic; chain labels come from the
-API's typed address fields, not address guessing. Detections are not automatically
-classified as malicious and no ownership assertions are made.
-
-The checkpoint advances after successful queue submission, not worker completion;
-check OpenCTI Works for import errors. Source errors or the pagination cap (100
-pages of 100 records per day) leave the checkpoint unchanged. Zero detections in
-a successful work means no matching records in the queried window.
-
-## Monitoring
-
-```sh
-docker compose --profile vysion --profile vysion-wallets ps
-docker compose --profile vysion logs -f connector-vysion-enrichment
-docker compose --profile vysion-wallets logs -f connector-vysion-wallets
-```
+- **Ransomware:** hourly, rolling 24-hour window. Configure `CONNECTOR_RUN_EVERY`
+  and `VYSION_LOOKBACK_HOURS`. Resetting state or retrying partial imports can
+  duplicate incidents.
+- **Wallets:** hourly, initially the previous 24 hours, with overlapping queries
+  and up to 30 days of catch-up. Set `VYSION_WALLET_PLATFORM` to `darknet` (default),
+  `telegram`, `discord` or `all`; interval: `VYSION_WALLET_INTERVAL_SECONDS`.
+  IDs are deterministic. Check Works for worker errors after queue submission.
 
 ## Tests
 
-Offline unit tests do not contact OpenCTI or Vysion:
+From `opencti/`, run offline tests:
 
 ```sh
 docker build -f internal-enrichment/Dockerfile -t vysion-opencti-enrichment:local .
@@ -164,22 +88,4 @@ docker run --rm --entrypoint python3 -v "$PWD:/tests:ro" \
   vysion-opencti-enrichment:local -m unittest discover -s /tests/tests -v
 ```
 
-Tests cover retries, schemas, pagination, capture grouping and retention,
-deterministic IDs, chain ambiguity, whitelist/TLP controls, leak redaction,
-checkpoint failures and unchanged scores.
-
-Optional live test using the public Bitcoin genesis address (creates/upserts an
-annotated observable and requests enrichment; requires configured credentials):
-
-```sh
-docker compose --profile vysion run --rm --no-deps -T --entrypoint python3 \
-  -v "$PWD/tests/smoke_opencti.py:/smoke_opencti.py:ro" \
-  connector-vysion-enrichment /smoke_opencti.py
-```
-
-## API reference
-
-- https://developers.vysion.ai/api/documents/
-- https://developers.vysion.ai/api/leaks/
-- https://developers.vysion.ai/api/instant-messaging/
-- https://developers.vysion.ai/api/feeds/
+[Vysion API documentation](https://developers.vysion.ai)
