@@ -102,7 +102,7 @@ class VysionIE:
         return queries
 
     @staticmethod
-    def make_evidence(source, hit, target, markings):
+    def make_evidence(source, hit, target, markings, matched_value=None):
         rows = []
         app_url = "https://app.vysion.ai"
         source_url = None
@@ -140,6 +140,9 @@ class VysionIE:
             content = "A mention does not establish malicious activity or domain ownership."
         elif source == "leaks":
             record_id = hit.get("id")
+            app_url = f"https://app.vysion.ai/leaks/{quote(str(record_id), safe='')}"
+            if matched_value:
+                app_url += f"?highlight={quote(str(matched_value), safe='')}"
             title = "Vysion exposure evidence"
             # Intentionally exclude credentials, detectedInfo, highlights,
             # downloadable files and unrelated personal data.
@@ -168,11 +171,11 @@ class VysionIE:
         table = "| Field | Value |\n| --- | --- |\n" + "\n".join(
             f"| {table_cell(key)} | {table_cell(value)} |" for key, value in rows
         )
-        label = "Open document in Vysion" if source == "documents" else "Open Vysion (home)"
+        label = {"documents": "Open document in Vysion", "leaks": "Open leak in Vysion"}.get(source, "Open Vysion (home)")
         links = f"[{label}]({quote(app_url, safe=':/?=&%#')})"
         if source_url:
             links += f" · [Original source]({quote(source_url, safe=':/?=&%#')})"
-        content = f"## Vysion evidence\n\n{links}\n\n{table}\n\n> {content}"
+        content = f"## Vysion evidence\n\n### {links}\n\n---\n\n### Evidence metadata\n\n{table}\n\n---\n\n> {content}"
         return evidence_note(source, str(record_id), target, title, content, markings, references)
 
     @staticmethod
@@ -275,7 +278,10 @@ class VysionIE:
                     objects[note.id] = note
             else:
                 for hit in hits:
-                    note = self.make_evidence(source, hit, entity["standard_id"], markings)
+                    note = self.make_evidence(
+                        source, hit, entity["standard_id"], markings,
+                        matched_value=entity.get("observable_value"),
+                    )
                     objects[note.id] = note
         if objects:
             self.helper.send_stix2_bundle(

@@ -115,6 +115,14 @@ class ModelTests(unittest.TestCase):
             "email-addr--b689de09-1d7c-5dc8-8e36-198e019f45a3", [])
         self.assertNotIn("SECRET", note.serialize())
 
+    def test_leak_link_encodes_id_and_highlight(self):
+        note = enrichment.VysionIE.make_evidence("leaks", {"id": "id/?#"},
+            "email-addr--b689de09-1d7c-5dc8-8e36-198e019f45a3", [],
+            matched_value="test+tag@example.com&other=1")
+        url = "https://app.vysion.ai/leaks/id%2F%3F%23?highlight=test%2Btag%40example.com%26other%3D1"
+        self.assertEqual(note.external_references[-1].url, url)
+        self.assertIn(f"[Open leak in Vysion]({url})", note.content)
+
     def test_wallet_feed_stable(self):
         hit = {"id": "feed1", "bitcoin_address": [{"value": "wallet-value"}]}
         first = wallets.wallet_objects(hit)

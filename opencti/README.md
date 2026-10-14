@@ -82,8 +82,10 @@ Document captures are grouped by exact source URL, title and enriched observable
 Each note has page metadata and a table of detection dates, languages, hashes
 and individual `https://app.vysion.ai/document/{id}` links. Subsequent enrichment
 retains previously collected captures. Missing source URLs prevent grouping.
-Legacy per-document notes are not deleted automatically. IM and leak notes link
-to the Vysion app homepage and include selected evidence metadata.
+Legacy per-document notes are not deleted automatically. Leak notes link to
+`https://app.vysion.ai/leaks/{id}` with the matched value highlighted. File access
+remains in the authenticated Vysion app; no temporary download URL is stored.
+IM notes link to the app homepage. Both include selected evidence metadata.
 
 A mention is not proof of maliciousness, ownership or real-world identity.
 Enrichment does not create threat indicators or change analyst scores.
