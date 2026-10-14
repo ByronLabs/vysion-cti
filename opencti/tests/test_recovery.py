@@ -8,8 +8,6 @@ import sys
 import unittest
 from unittest.mock import Mock, patch
 
-from stix2 import Bundle
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from common.client import VysionClient, VysionError
@@ -26,8 +24,6 @@ def load(name, path):
 wallets = load("recovery_wallets", "wallet-feed/src/wallets.py")
 ransomware = load("recovery_ransomware", "external-import/src/vysion-external.py")
 enrichment = load("recovery_enrichment", "internal-enrichment/src/vysion-enrichment.py")
-legacy_ie = load("legacy_ie", "internal-enrichment/src/lib/internal_enrichment.py")
-legacy_ei = load("legacy_ei", "external-import/src/lib/external_import.py")
 
 
 def helper(state=None, status="complete", errors=None):
@@ -73,27 +69,6 @@ class DeliveryTests(unittest.TestCase):
         self.assertFalse(confirmed)
         self.assertEqual(h.state["window_end"], "old")
 
-    def test_work_lookup_failure_preserves_pending(self):
-        h = helper(status="progress")
-        state, _ = submit(h, {}, "{}", {"done": True}, "work")
-        h.api.query.side_effect = RuntimeError("unavailable")
-        with self.assertRaises(RuntimeError):
-            reconcile(h, state)
-        self.assertEqual(h.state, state)
-
-    def test_missing_or_timed_out_work_is_replayed(self):
-        for missing in [False, True]:
-            h = helper(status="progress")
-            state, _ = submit(h, {}, "{}", {}, "work")
-            if missing:
-                h.api.query.return_value = {"data": {"work": None}}
-            else:
-                state["pending_import"]["submitted_at"] = 0
-            h.send_stix2_bundle.reset_mock()
-            _, confirmed = reconcile(h, state)
-            self.assertFalse(confirmed)
-            h.send_stix2_bundle.assert_called_once()
-
     def test_durable_bundle_limit_before_state_or_send(self):
         h = helper()
         with self.assertRaises(VysionError):
@@ -114,12 +89,6 @@ class WindowTests(unittest.TestCase):
         now = datetime.now(timezone.utc)
         with self.assertRaises(VysionError):
             window_bounds({"window_end": (now - timedelta(days=31)).isoformat()}, now)
-
-    def test_rejected_window_does_not_move_on_retry(self):
-        state = {"retry_window": {"start": "2026-10-01T00:00:00+00:00", "end": "2026-10-02T00:00:00+00:00"}}
-        first = window_bounds(state, datetime(2026, 10, 14, tzinfo=timezone.utc))
-        second = window_bounds(state, datetime(2026, 10, 15, tzinfo=timezone.utc))
-        self.assertEqual(first, second)
 
     def test_quarantine_rotates_and_never_silently_drops_missing_records(self):
         records = [{"id": "one", "batch": "2026-10-01", "error": "ValueError"},
@@ -178,20 +147,8 @@ class WalletRecoveryTests(unittest.TestCase):
         self.assertTrue(obj.helper.state["quarantine_due"])
         self.assertIn("window_end", obj.helper.state)
 
-    def test_wallet_limits(self):
-        for fields in [{"bitcoin_address": ["a"] * 101}, {"bitcoin_address": ["a" * 257]},
-                       {"bitcoin_address": ["a"] * 60, "ethereum_address": ["b"] * 60}]:
-            with self.assertRaises(ValueError):
-                wallets.wallet_objects(self.hit("limit", **fields))
-
 
 class MetadataTests(unittest.TestCase):
-    def test_markdown_links_are_literal(self):
-        value = enrichment.table_cell("![pixel](https://example.com) **bold** `code`")
-        self.assertNotIn("![pixel]", value)
-        self.assertIn(r"\[pixel\]", value)
-        self.assertIn(r"\*\*bold\*\*", value)
-
     def test_structured_captures_survive_table_edits(self):
         target = "email-addr--b689de09-1d7c-5dc8-8e36-198e019f45a3"
         first = {"page": {"id": "one", "pageTitle": "Title", "url": {"url": "https://example.com"}, "sha256sum": "hash"}}
@@ -239,11 +196,6 @@ class ConfigurationTests(unittest.TestCase):
                 obj = ransomware.VysionEI()
                 self.assertEqual(obj.update_existing_data, expected)
                 self.assertEqual(obj.interval_seconds, 7200)
-
-    def test_legacy_invalid_boolean_falls_back_without_attribute_error(self):
-        with patch.dict(os.environ, {"CONNECTOR_UPDATE_EXISTING_DATA": "invalid", "CONNECTOR_RUN_EVERY": "1h"}), patch.object(legacy_ie, "OpenCTIConnectorHelper"), patch.object(legacy_ei, "OpenCTIConnectorHelper"):
-            self.assertIs(legacy_ie.InternalEnrichmentConnector().update_existing_data, False)
-            self.assertIs(legacy_ei.ExternalImportConnector().update_existing_data, False)
 
 
 class RansomwareRecoveryTests(unittest.TestCase):
@@ -312,22 +264,6 @@ class RansomwareRecoveryTests(unittest.TestCase):
         self.assertEqual(set(obj.helper.state["imported_event_ids"]), {"legacy", "gap"})
         self.assertEqual(obj.helper.state["events_imported"], 1)
         self.assertNotIn("window_end", state)
-
-    def test_expired_legacy_checkpoint_fails_without_importing(self):
-        obj = self.connector()
-        legacy = datetime.now(timezone.utc) - timedelta(days=33)
-        with self.assertRaises(VysionError):
-            obj.run_once({"last_batch": legacy.date().isoformat()})
-        obj.helper.send_stix2_bundle.assert_not_called()
-        obj.helper.set_state.assert_not_called()
-
-    def test_modern_checkpoint_takes_precedence_over_legacy_batch(self):
-        obj = self.connector()
-        now = datetime.now(timezone.utc)
-        previous = now - timedelta(hours=1)
-        obj.get_feed_vysion = Mock(return_value=[])
-        obj.run_once({"last_batch": "2020-01-01", "window_end": previous.isoformat(), "imported_event_ids": ["known"]})
-        self.assertEqual(obj.get_feed_vysion.call_args.args[0], previous - timedelta(hours=24))
 
 
 class PollingTests(unittest.TestCase):

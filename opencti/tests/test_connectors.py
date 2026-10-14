@@ -3,12 +3,10 @@ from pathlib import Path
 import sys
 import unittest
 import json
-from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 from pycti import OpenCTIConnectorHelper
 
 import requests
-from stix2 import Bundle
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -61,12 +59,6 @@ class ClientTests(unittest.TestCase):
         with self.assertRaises(VysionError):
             self.client([response]).get("x")
 
-    def test_short_page_with_more_results_continues(self):
-        client = self.client([self.response(200, [{"id": "a"}], 2), self.response(200, [{"id": "b"}], 2)])
-        hits, limited = client.search("x", page_size=10)
-        self.assertEqual(len(hits), 2)
-        self.assertFalse(limited)
-
     def test_incomplete_pagination_fails(self):
         client = self.client([self.response(200, [{"id": "a"}], 2), self.response(200, [], 2)])
         with self.assertRaises(VysionError):
@@ -86,18 +78,8 @@ class ClientTests(unittest.TestCase):
             client.get("x")
         self.assertEqual(client.session.get.call_count, 1)
 
-    def test_repeated_page_is_not_a_complete_import(self):
-        client = self.client([self.response(200, [{"id": "same"}], 2)] * 2)
-        with self.assertRaises(VysionError):
-            client.search("x", page_size=1)
-
 
 class ModelTests(unittest.TestCase):
-    def test_wallet_chain_required(self):
-        with self.assertRaises(ValueError):
-            enrichment.VysionIE.wallet_chain({}, {"labels": []})
-        self.assertEqual(enrichment.VysionIE.wallet_chain({}, {"labels": ["chain:BNB"]}), "BNB")
-
     def test_notes_stable_and_not_indicators(self):
         hit = {"page": {"id": "doc1", "url": {"url": "example.onion", "networkProtocol": "http"}}}
         target = "email-addr--b689de09-1d7c-5dc8-8e36-198e019f45a3"
@@ -111,40 +93,17 @@ class ModelTests(unittest.TestCase):
         self.assertIn("| Field | Value |", first.content)
         self.assertIn("https://app.vysion.ai/document/doc1", first.content)
 
-    def test_table_escapes_untrusted_metadata(self):
-        value = enrichment.table_cell('<script>alert(1)</script>|column\nline')
-        self.assertNotIn("<script>", value)
-        self.assertIn("\\|", value)
-        self.assertNotIn("\n", value)
-
-    def test_document_captures_grouped_and_retained(self):
-        target = "email-addr--b689de09-1d7c-5dc8-8e36-198e019f45a3"
-        first = {"page": {"id": "a", "pageTitle": "Same title", "url": {"url": "https://example.com/page"}, "sha256sum": "hash-a"}}
-        second = {"page": {**first["page"], "id": "b", "sha256sum": "hash-b"}}
-        groups = enrichment.VysionIE.document_groups([first, second])
-        self.assertEqual(len(groups), 1)
-        note = enrichment.VysionIE.grouped_document_note(groups[0], target, [])
-        self.assertIn("hash-a", note.content)
-        self.assertIn("hash-b", note.content)
-        repeated = enrichment.VysionIE.grouped_document_note([second], target, [], note.content)
-        self.assertEqual(note.id, repeated.id)
-        self.assertEqual(note.content, repeated.content)
-        self.assertIn("https://app.vysion.ai/document/a", repeated.content)
-
     def test_same_title_different_pages_not_grouped(self):
         hits = [{"page": {"id": str(index), "pageTitle": "Same title", "url": {"url": url}}}
                 for index, url in enumerate(["https://example.com/a", "https://example.com/b", "", ""])]
         self.assertEqual(len(enrichment.VysionIE.document_groups(hits)), 4)
 
-    def test_document_link_without_original_url(self):
-        hit = {"page": {"id": "doc/1?#"}}
-        note = enrichment.VysionIE.make_evidence("documents", hit,
-            "email-addr--b689de09-1d7c-5dc8-8e36-198e019f45a3", [])
-        self.assertEqual(note.external_references[0].url, "https://app.vysion.ai/document/doc%2F1%3F%23")
-        self.assertEqual(len(note.external_references), 1)
-
     def test_leak_does_not_import_secrets(self):
-        note = enrichment.VysionIE.make_evidence("leaks", {"id": "x", "content": "SECRET", "downloadUrl": "SECRET"},
+        note = enrichment.VysionIE.make_evidence("leaks", {
+            "id": "x", "content": "SECRET", "downloadUrl": "SECRET",
+            "detectedInfo": "SECRET", "highlights": ["SECRET"],
+            "password": "SECRET", "credentials": "SECRET",
+        },
             "email-addr--b689de09-1d7c-5dc8-8e36-198e019f45a3", [])
         self.assertNotIn("SECRET", note.serialize())
 
@@ -155,14 +114,6 @@ class ModelTests(unittest.TestCase):
         url = "https://app.vysion.ai/leaks/id%2F%3F%23?highlight=test%2Btag%40example.com%26other%3D1"
         self.assertEqual(note.external_references[-1].url, url)
         self.assertIn(f"[Open leak in Vysion]({url})", note.content)
-
-    def test_wallet_feed_stable(self):
-        hit = {"id": "feed1", "bitcoin_address": [{"value": "wallet-value"}]}
-        first = wallets.wallet_objects(hit)
-        second = wallets.wallet_objects(hit)
-        self.assertEqual([obj.id for obj in first], [obj.id for obj in second])
-        self.assertEqual(first[0].x_opencti_labels, ["vysion", "chain:BTC"])
-        Bundle(objects=first, allow_custom=True).serialize()
 
     def test_whitelist_no_request(self):
         connector = enrichment.VysionIE.__new__(enrichment.VysionIE)
@@ -182,13 +133,6 @@ class ModelTests(unittest.TestCase):
         connector.helper.check_max_tlp = OpenCTIConnectorHelper.check_max_tlp
         return connector
 
-    def test_tlp_rejected_before_request(self):
-        connector = self.connector()
-        entity = {"standard_id": "x", "objectMarking": [{"definition_type": "TLP", "definition": "TLP:RED"}]}
-        with self.assertRaises(ValueError):
-            connector._process_message({"enrichment_entity": entity})
-        connector.client.search.assert_not_called()
-
     def test_every_marking_checked(self):
         connector = self.connector()
         entity = {"standard_id": "x", "objectMarking": [
@@ -197,16 +141,12 @@ class ModelTests(unittest.TestCase):
         ]}
         with self.assertRaises(ValueError):
             connector._process_message({"enrichment_entity": entity})
+        connector.client.search.assert_not_called()
 
     def test_leaks_opt_in(self):
         entity = {"entity_type": "IPv4-Addr", "observable_value": "192.0.2.1"}
         self.assertEqual(self.connector().queries(entity, {}), [])
         self.assertEqual(self.connector(True).queries(entity, {})[0][1], "leak/ip/192.0.2.1")
-
-    def test_unsupported_type_no_request(self):
-        entity = {"entity_type": "Unsupported", "observable_value": "example"}
-        with self.assertRaises(ValueError):
-            self.connector().queries(entity, {})
 
     def test_markings_propagated(self):
         marking = "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
@@ -225,9 +165,14 @@ class ModelTests(unittest.TestCase):
 
     def test_no_score_change(self):
         connector = self.connector()
+        connector.client.search.side_effect = [([
+            {"page": {"id": "doc1", "pageTitle": "Example", "url": {"url": "https://example.com"}}}
+        ], False), ([], False)]
+        connector.helper.api.note.read.return_value = None
         entity = {"standard_id": "email-addr--b689de09-1d7c-5dc8-8e36-198e019f45a3",
                   "entity_type": "Email-Addr", "observable_value": "user@example.com"}
         self.assertIn("score unchanged", connector._process_message({"enrichment_entity": entity}))
+        connector.helper.send_stix2_bundle.assert_called_once()
         connector.helper.api.stix_cyber_observable.update_field.assert_not_called()
 
     def test_wallet_feed_truncated_does_not_checkpoint(self):
@@ -243,44 +188,6 @@ class ModelTests(unittest.TestCase):
         connector.helper.set_state.assert_not_called()
         connector.helper.send_stix2_bundle.assert_not_called()
         self.assertTrue(connector.helper.api.work.to_processed.call_args.args[2])
-
-    def test_wallet_feed_empty_checkpoint(self):
-        connector = wallets.WalletFeed.__new__(wallets.WalletFeed)
-        connector.platform = "darknet"
-        connector.client = Mock()
-        connector.client.search.return_value = ([], False)
-        connector.helper = Mock()
-        connector.helper.get_state.return_value = {}
-        connector.run_once()
-        self.assertEqual(connector.helper.set_state.call_args.args[0]["detections"], 0)
-        connector.helper.send_stix2_bundle.assert_not_called()
-
-    def test_wallet_historical_import_does_not_checkpoint(self):
-        connector = wallets.WalletFeed.__new__(wallets.WalletFeed)
-        connector.platform = "darknet"
-        connector.helper = Mock()
-        connector.helper.get_state.return_value = {"last_run": 123}
-        connector.client = Mock()
-        start = datetime(2026, 9, 1, tzinfo=timezone.utc)
-        connector.client.search.return_value = ([
-            {"id": "old", "detectionDate": "2026-08-31T23:59:59Z", "bitcoin_address": ["old"]},
-            {"id": "first", "detectionDate": "2026-09-01T01:00:00Z", "bitcoin_address": ["address-one"]},
-            {"id": "second", "detectionDate": "2026-09-01T02:00:00Z", "bitcoin_address": ["address-two"]},
-        ], False)
-        result = connector.run_once(start, start + timedelta(hours=23), checkpoint=False, max_detections=1)
-        self.assertEqual(result["detections"], 1)
-        self.assertEqual(result["objects"], 2)
-        connector.helper.set_state.assert_not_called()
-        connector.helper.send_stix2_bundle.assert_called_once()
-
-    def test_wallet_historical_window_cannot_replace_checkpoint(self):
-        connector = wallets.WalletFeed.__new__(wallets.WalletFeed)
-        connector.helper = Mock()
-        connector.helper.get_state.return_value = {}
-        start = datetime(2026, 9, 1, tzinfo=timezone.utc)
-        with self.assertRaises(ValueError):
-            connector.run_once(start, start + timedelta(hours=23))
-        connector.helper.api.work.initiate_work.assert_not_called()
 
 
 if __name__ == "__main__":

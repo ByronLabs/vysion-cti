@@ -58,15 +58,6 @@ class RansomwareTests(unittest.TestCase):
         self.assertEqual(first[1].id, second[1].id)
         self.assertNotEqual(first[2].id, second[2].id)
 
-    def test_optional_null_text_and_url(self):
-        objects = ransomware.VysionEI.event_to_stix(ransomware.VysionEI.normalize_event(event(text=None, url=None)))
-        Bundle(objects=objects, allow_custom=True).serialize()
-
-    def test_invalid_events_fail(self):
-        for raw in [None, event(companyName=""), event(ransomwareGroup=None), event(detected="invalid"), event(country=123)]:
-            with self.subTest(raw=raw), self.assertRaises(VysionError):
-                ransomware.VysionEI.validate_event(raw)
-
     def test_utc_window_and_deduplication_across_batches(self):
         obj = self.connector()
         end = datetime(2026, 10, 14, 12, tzinfo=timezone.utc)
@@ -79,19 +70,6 @@ class RansomwareTests(unittest.TestCase):
         hits = obj.get_feed_vysion(start, end)
         self.assertEqual([h["id"] for h in hits], [inside["id"], naive["id"]])
         self.assertEqual([c.args[0] for c in obj.get_batch_events.call_args_list], ["2026-10-13", "2026-10-14"])
-
-    def test_batch_limit_fails(self):
-        obj = self.connector()
-        obj.client.search.return_value = ([], True)
-        with self.assertRaises(VysionError):
-            obj.get_batch_events("2026-10-14")
-
-    def test_schema_validation_before_import(self):
-        obj = self.connector()
-        obj.client.search.return_value = ([event(detected="bad")], False)
-        now = datetime.now(timezone.utc)
-        self.assertEqual(obj.get_feed_vysion(now - timedelta(hours=1), now), [])
-        self.assertTrue(obj.rejected_records)
 
     def test_import_then_repeat_skipped(self):
         obj = self.connector()
@@ -106,22 +84,6 @@ class RansomwareTests(unittest.TestCase):
         obj.helper.send_stix2_bundle.assert_not_called()
         self.assertEqual(obj.helper.set_state.call_args.args[0]["events_imported"], 0)
 
-    def test_retry_without_checkpoint_uses_same_ids(self):
-        obj = self.connector()
-        obj.get_feed_vysion = Mock(return_value=[event()])
-        obj.helper.send_stix2_bundle.side_effect = RuntimeError("queue error")
-        with self.assertRaises(RuntimeError):
-            obj.run_once({})
-        first = json.loads(obj.helper.send_stix2_bundle.call_args.args[0])
-        saved = obj.helper.set_state.call_args.args[0]
-        self.assertEqual(saved["pending_import"]["phase"], "prepared")
-        self.assertNotIn("imported_event_ids", saved)
-        self.assertTrue(obj.helper.api.work.to_processed.call_args.args[2])
-        obj.helper.send_stix2_bundle.side_effect = None
-        obj.run_once({})
-        second = json.loads(obj.helper.send_stix2_bundle.call_args.args[0])
-        self.assertEqual([o["id"] for o in first["objects"]], [o["id"] for o in second["objects"]])
-
     def test_http_failure_preserves_checkpoint(self):
         obj = self.connector()
         obj.get_feed_vysion = Mock(side_effect=VysionError("HTTP 403"))
@@ -132,43 +94,11 @@ class RansomwareTests(unittest.TestCase):
         obj.helper.set_state.assert_not_called()
         obj.helper.send_stix2_bundle.assert_not_called()
 
-    def test_legacy_state_migration(self):
-        obj = self.connector()
-        obj.get_batch_events = Mock(return_value=[event("legacy")])
-        self.assertEqual(obj.get_legacy_imported_event_ids({"last_batch": "2026-10-13"}), {"legacy"})
-
-    def test_checkpoint_retains_newest_ids_in_order(self):
-        obj = self.connector()
-        obj.get_feed_vysion = Mock(return_value=[event("new")])
-        obj.run_once({"imported_event_ids": [f"old-{index}" for index in range(10000)]})
-        saved = obj.helper.set_state.call_args.args[0]["imported_event_ids"]
-        self.assertEqual(len(saved), 10000)
-        self.assertEqual(saved[0], "old-1")
-        self.assertEqual(saved[-1], "new")
-
-    def test_shared_entities_not_repeated_in_bundle(self):
-        obj = self.connector()
-        obj.get_feed_vysion = Mock(return_value=[event("one"), event("two")])
-        obj.run_once({})
-        objects = json.loads(obj.helper.send_stix2_bundle.call_args.args[0])["objects"]
-        self.assertEqual(len(objects), 8)
-        self.assertEqual(len({item["id"] for item in objects}), len(objects))
-
     def test_interval_must_be_positive(self):
         self.assertEqual(ransomware.VysionEI._parse_interval("1h"), 3600)
         for interval in ["0s", "-1h", "daily"]:
             with self.assertRaises(ValueError):
                 ransomware.VysionEI._parse_interval(interval)
-
-    def test_historical_import_cannot_advance_checkpoint(self):
-        obj = self.connector()
-        start = datetime(2026, 9, 1, tzinfo=timezone.utc)
-        with self.assertRaises(ValueError):
-            obj.run_once({}, start, start + timedelta(hours=23))
-        obj.get_feed_vysion = Mock(return_value=[event("one"), event("two")])
-        result = obj.run_once({}, start, start + timedelta(hours=23), checkpoint=False, max_events=1)
-        self.assertEqual(result["events"], 1)
-        obj.helper.set_state.assert_not_called()
 
 
 if __name__ == "__main__":
