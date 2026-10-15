@@ -107,6 +107,8 @@ class ModelTests(unittest.TestCase):
         },
             "email-addr--b689de09-1d7c-5dc8-8e36-198e019f45a3", [])
         self.assertNotIn("SECRET", note.serialize())
+        self.assertIn("Match found in the leak content indexed by Vysion.", note.content)
+        self.assertIn("No credentials or leak content are imported into OpenCTI.", note.content)
 
     def test_leak_link_encodes_id_and_highlight(self):
         note = enrichment.VysionIE.make_evidence("leaks", {"id": "id/?#"},

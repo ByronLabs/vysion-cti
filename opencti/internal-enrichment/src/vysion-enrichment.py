@@ -157,12 +157,11 @@ class VysionIE:
             title = "Vysion exposure evidence"
             # Intentionally exclude credentials, detectedInfo, highlights,
             # downloadable files and unrelated personal data.
-            content = f"A matching value was found in leak metadata.\nDetected: {hit.get('detectionDate', '')}\nHash: {hit.get('fileHash', '')}\nNo credentials or leaked content were imported."
             references = [{"source_name": "Vysion leak", "external_id": str(record_id)}]
             rows = [("Detected", hit.get("detectionDate")), ("Hash", hit.get("fileHash")),
                     ("File type", hit.get("fileType")), ("MIME", hit.get("detectedMimeType")),
                     ("Size (bytes)", hit.get("fileSize")), ("Language", hit.get("language"))]
-            content = "Match in leak metadata. No credentials or leaked content are imported."
+            content = "Match found in the leak content indexed by Vysion. No credentials or leak content are imported into OpenCTI."
         else:
             record_id = f"{hit.get('platform', '')}:{hit.get('userId', '')}"
             if not hit.get("userId") or not hit.get("platform"):
