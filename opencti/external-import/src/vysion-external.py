@@ -333,11 +333,29 @@ class VysionEI:
                     )
             if max_events is not None:
                 events = events[:max_events]
-            # One durable chunk per cycle; confirmed IDs avoid reprocessing it.
-            remaining = len(events) > 50
-            events = events[:50]
+            # Bound durable chunks by both event count and serialized bytes.
+            from common.imports import MAX_BUNDLE_BYTES
+            candidates = events
+            events = []
+            objects = {}
+            remaining = False
+            for event in candidates:
+                if len(events) >= 50:
+                    remaining = True
+                    break
+                prospective = dict(objects)
+                for obj in self.event_to_stix(event):
+                    prospective[obj.id] = obj
+                if len(evidence_bundle(prospective.values()).encode("utf-8")) > MAX_BUNDLE_BYTES:
+                    if not events:
+                        quarantine(rejected, {"id": event["event_id"]}, event["date"][:10],
+                                   VysionError("Single ransomware event exceeds chunk limits"))
+                        continue
+                    remaining = True
+                    break
+                objects = prospective
+                events.append(event)
             resolved.update(event["event_id"] for event in events)
-            objects = {obj.id: obj for event in events for obj in self.event_to_stix(event)}
             rejected = merge_rejected(state.get("rejected_records", []), rejected, resolved,
                                       window_start.date().isoformat() if quarantine_mode else None)
             success_state = {
