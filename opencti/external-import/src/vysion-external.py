@@ -190,8 +190,7 @@ class VysionEI:
             name=(
                 f"Vysion Feed: {event['ransomware_group']} Attack - {event['company']}"
             ),
-            description=(event["info"] or "Ransomware detection reported by Vysion")
-            + "\n\nFirst seen is the Vysion detection time, not the confirmed start of the attack.",
+            description=event["info"] or "Ransomware detection reported by Vysion",
             labels=["ransomware"],
             external_references=[
                 {

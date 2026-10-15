@@ -81,7 +81,7 @@ and pagination limits are reported in Works.
   successful worker completion. Keep existing state
   when upgrading: legacy incidents with random IDs are not migrated automatically.
   Incidents include type `ransomware`, source `Vysion`, and first-seen equal to
-  Vysion's detection time (not a confirmed attack start). Severity is not inferred.
+  Vysion's detection time. Severity is not inferred.
 - **Wallets:** hourly, initially the previous 24 hours, with overlapping queries
   and up to 30 days of catch-up. Set `VYSION_WALLET_PLATFORM` to `darknet` (default),
   `telegram`, `discord` or `all`; interval: `VYSION_WALLET_INTERVAL_SECONDS`.

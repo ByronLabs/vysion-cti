@@ -9,7 +9,7 @@ from stix2 import Bundle, Identity, Note, Relationship
 VYSION_AUTHOR = Identity(
     id=OpenCTIIdentity.generate_id("Vysion", "organization"),
     name="Vysion", identity_class="organization",
-    description="Provider of Vysion intelligence; not necessarily the original publisher of the evidence.",
+    description="Provider of Vysion intelligence.",
 )
 
 

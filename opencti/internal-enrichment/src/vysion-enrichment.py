@@ -172,7 +172,7 @@ class VysionIE:
             rows = [("Platform", hit.get("platform")), ("Profile ID", hit.get("userId")),
                     ("Usernames", hit.get("usernames")), ("Detected", hit.get("detectionDate")),
                     ("Bot", hit.get("bot"))]
-            content = "A profile association does not establish ownership or malicious activity."
+            content = ""
         if not record_id:
             raise ValueError("Evidence result has no stable ID")
         if source != "documents":
@@ -185,7 +185,10 @@ class VysionIE:
         links = f"[{label}]({quote(app_url, safe=':/?=&%#')})"
         if source_url:
             links += f" · [Original source]({quote(source_url, safe=':/?=&%#')})"
-        content = f"## Vysion evidence\n\n### {links}\n\n---\n\n### Evidence metadata\n\n{table}\n\n---\n\n> {content}"
+        summary = content
+        content = f"## Vysion evidence\n\n### {links}\n\n---\n\n### Evidence metadata\n\n{table}"
+        if summary:
+            content += f"\n\n---\n\n> {summary}"
         return evidence_note(source, str(record_id), target, title, content, markings, references)
 
     @staticmethod
