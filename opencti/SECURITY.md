@@ -34,8 +34,8 @@ user, a bounded temporary directory and CPU/memory/process limits.
 Run exactly one instance for each connector ID. Enrichment serializes local
 updates and uses a bounded write-through content cache to retain consecutive
 capture additions while workers process the queue. Updated cache entries move
-to the most-recent position before eviction. Capture metadata is embedded as
-structured data in the note; the visible table is not authoritative. Retention
+to the most-recent position before eviction. The visible capture table is the
+retained evidence; no hidden metadata is embedded in notes. Retention
 is capped at 1,000 captures; reaching the limit fails without deleting captures.
 Cross-instance atomic merges are not supported. Stop the scheduled connector
 before live smoke tests. Do not edit generated note metadata manually.

@@ -157,15 +157,14 @@ class WalletRecoveryTests(unittest.TestCase):
 
 
 class MetadataTests(unittest.TestCase):
-    def test_structured_captures_survive_table_edits(self):
+    def test_capture_table_retains_prior_captures(self):
         target = "email-addr--b689de09-1d7c-5dc8-8e36-198e019f45a3"
         first = {"page": {"id": "one", "pageTitle": "Title", "url": {"url": "https://example.com"}, "sha256sum": "hash"}}
         second = {"page": {**first["page"], "id": "two"}}
         note = enrichment.VysionIE.grouped_document_note([first], target, [])
-        edited = note.content.replace("| one |", "| edited |")
-        updated = enrichment.VysionIE.grouped_document_note([second], target, [], edited)
+        updated = enrichment.VysionIE.grouped_document_note([second], target, [], note.content)
         self.assertIn("| one |", updated.content)
-        self.assertNotIn("| edited |", updated.content)
+        self.assertNotIn("vysion-captures-v1", updated.content)
         self.assertEqual({r.external_id for r in updated.external_references if getattr(r, "external_id", None)}, {"one", "two"})
 
     def test_updated_old_cache_entry_survives_eviction_and_stale_api(self):

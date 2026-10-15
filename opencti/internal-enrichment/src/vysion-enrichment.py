@@ -3,8 +3,7 @@ import html
 import json
 import re
 import threading
-import base64
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import quote, urlsplit
 
 import yaml
 from pycti import OpenCTIConnectorHelper, get_config_variable
@@ -233,27 +232,12 @@ class VysionIE:
             for line in table.splitlines()[2:]:
                 if line.startswith("| ") and line.endswith(" |"):
                     captures[line.split(" | ", 1)[0][2:]] = line
-        # Structured capture metadata is authoritative; the table is presentation.
-        marker = re.search(r"<!-- vysion-captures-v1:([A-Za-z0-9+/=]+) -->", previous_content)
-        stored = {}
-        if marker:
-            if len(marker[1]) > 1_000_000:
-                raise ValueError("Stored capture metadata exceeds limit")
-            stored = json.loads(base64.b64decode(marker[1], validate=True))
-            if not isinstance(stored, dict) or len(stored) > 1000:
-                raise ValueError("Invalid stored capture metadata")
-            captures = {}
-            for record_id, capture in stored.items():
-                app_url = f"https://app.vysion.ai/document/{quote(record_id, safe='')}"
-                fields = [record_id, capture.get("detectionDate"), capture.get("language"), capture.get("sha256sum"), capture.get("sha1sum")]
-                captures[table_cell(record_id)] = "| " + " | ".join(table_cell(value) for value in fields) + f" | [Open capture]({app_url}) |"
         references = []
         if url and urlsplit(url).scheme in {"http", "https"}:
             references.append({"source_name": "Original source", "url": url})
         for hit in hits:
             capture = hit["page"]
             record_id = str(capture["id"])
-            stored[record_id] = {field: capture.get(field) for field in ("detectionDate", "language", "sha256sum", "sha1sum")}
             app_url = f"https://app.vysion.ai/document/{quote(record_id, safe='')}"
             fields = [record_id, capture.get("detectionDate"), capture.get("language"),
                       capture.get("sha256sum"), capture.get("sha1sum")]
@@ -266,22 +250,9 @@ class VysionIE:
         for line in captures.values():
             match = re.search(r"\[Open capture\]\((https://app\.vysion\.ai/document/[^)]+)\)", line)
             if match:
-                record_id = unquote(match[1].rsplit("/", 1)[1])
+                record_id = match[1].rsplit("/", 1)[1]
                 if record_id not in existing_ids:
                     references.append({"source_name": "Vysion", "external_id": record_id, "url": match[1]})
-                if record_id not in stored:
-                    fields = line[2:-2].split(" | ")
-                    if len(fields) == 6:
-                        stored[record_id] = {
-                            name: None if value == "—" else html.unescape(re.sub(r"\\(.)", r"\1", value))
-                            for name, value in zip(("detectionDate", "language", "sha256sum", "sha1sum"), fields[1:5])
-                        }
-        # A legacy table is retained during migration; structured data takes over
-        # once each retained capture has been observed or reconstructed.
-        if len(stored) == len(captures):
-            encoded = base64.b64encode(json.dumps(stored, sort_keys=True).encode()).decode()
-        else:
-            encoded = None
         data = page.get("url") or {}
         rows = [("Title", page.get("pageTitle")), ("Source URL", url),
                 ("Network", data.get("network") if isinstance(data, dict) else None),
@@ -291,8 +262,6 @@ class VysionIE:
         )
         content = "## Vysion evidence\n\n" + metadata + "\n\n" + section + header + "\n| --- | --- | --- | --- | --- | --- |\n" + "\n".join(captures[k] for k in sorted(captures))
         content += "\n\n> Captures collected from bounded search results; this is not necessarily the complete page history. A mention does not establish malicious activity or ownership."
-        if encoded:
-            content += f"\n\n<!-- vysion-captures-v1:{encoded} -->"
         if len(content.encode()) > 1_000_000:
             raise ValueError("Capture note size limit reached; existing note preserved")
         return evidence_note("documents", "page-group:" + key, target,
