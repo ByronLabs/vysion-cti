@@ -3,11 +3,10 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from pycti import CustomObservableCryptocurrencyWallet, OpenCTIConnectorHelper
-from stix2 import Bundle
 from stix2.exceptions import STIXError
 
 from common.client import VysionClient, VysionError
-from common.evidence import evidence_note
+from common.evidence import evidence_note, evidence_bundle
 from common.imports import reconcile, submit, quarantine, window_bounds, is_quarantine_window, merge_rejected
 
 
@@ -161,7 +160,7 @@ class WalletFeed:
             else:
                 success["retry_window"] = {"start": start.isoformat(), "end": now.isoformat(), "mode": "quarantine" if quarantine_mode else "normal"}
             if objects:
-                bundle = Bundle(objects=list(objects.values()), allow_custom=True).serialize()
+                bundle = evidence_bundle(objects.values())
                 if checkpoint:
                     _, ready = submit(self.helper, state, bundle, success, work_id, update=True)
                 else:

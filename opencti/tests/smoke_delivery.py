@@ -9,12 +9,12 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from stix2 import Bundle
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "wallet-feed/src"))
 from common.imports import reconcile, submit
+from common.evidence import evidence_bundle
 from wallets import WalletFeed, wallet_objects
 
 
@@ -35,7 +35,7 @@ if __name__ == "__main__":
         raise RuntimeError("No supported detection in the sampled historical month")
     work_id = feed.helper.api.work.initiate_work(feed.helper.connect_id, "Vysion durable delivery smoke")
     state, confirmed = submit(
-        feed.helper, original, Bundle(objects=objects, allow_custom=True).serialize(),
+        feed.helper, original, evidence_bundle(objects),
         original, work_id, update=True,
     )
     for _ in range(90):

@@ -52,6 +52,10 @@ Files use SHA-256, SHA-1 or MD5.
 Notes group document captures by URL, title and observable, retaining dates,
 hashes and individual Vysion links. Leak notes link to the matching record in
 Vysion; credentials and file contents are not imported. Scores remain unchanged.
+Generated objects identify Vysion as their intelligence provider. Original source
+links remain separate; enrichment does not change the input observable's author.
+OpenCTI may retain the existing author of a previously imported note; this change
+does not migrate historical authorship or reimport already-confirmed feed events.
 
 ### Configuration
 
@@ -76,6 +80,8 @@ and pagination limits are reported in Works.
   Deterministic STIX IDs make retries idempotent; checkpoints advance only after
   successful worker completion. Keep existing state
   when upgrading: legacy incidents with random IDs are not migrated automatically.
+  Incidents include type `ransomware`, source `Vysion`, and first-seen equal to
+  Vysion's detection time (not a confirmed attack start). Severity is not inferred.
 - **Wallets:** hourly, initially the previous 24 hours, with overlapping queries
   and up to 30 days of catch-up. Set `VYSION_WALLET_PLATFORM` to `darknet` (default),
   `telegram`, `discord` or `all`; interval: `VYSION_WALLET_INTERVAL_SECONDS`.

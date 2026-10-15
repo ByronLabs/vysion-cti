@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "wallet-feed/src"))
 
 from wallets import WalletFeed, wallet_objects
+from common.evidence import VYSION_AUTHOR
 
 
 def completed(helper, work_id):
@@ -67,6 +68,12 @@ if __name__ == "__main__":
         expected = wallet_objects(selected) if selected else []
         if not expected:
             raise RuntimeError("First daily detection has no supported wallet fields")
+        existing_note_authors = {}
+        for obj in expected:
+            if obj.type == "note":
+                previous = feed.helper.api.note.read(id=obj.id)
+                if previous:
+                    existing_note_authors[obj.id] = (previous.get("createdBy") or {}).get("standard_id")
         result = feed.run_once(start, end, checkpoint=False, max_detections=1)
         work = completed(feed.helper, result["work_id"])
         ids = {}
@@ -75,6 +82,14 @@ if __name__ == "__main__":
             imported = reader.read(id=obj.id)
             if imported is None:
                 raise RuntimeError("Expected wallet feed object not found in OpenCTI")
+            if obj.type != "note" and (imported.get("createdBy") or {}).get("standard_id") != VYSION_AUTHOR.id:
+                raise RuntimeError("Wallet evidence lacks Vysion authorship")
+            if obj.type == "note":
+                allowed_authors = {VYSION_AUTHOR.id}
+                if obj.id in existing_note_authors:
+                    allowed_authors.add(existing_note_authors[obj.id])
+                if (imported.get("createdBy") or {}).get("standard_id") not in allowed_authors:
+                    raise RuntimeError("Unexpected evidence note author")
             ids[obj.id] = imported["id"]
             if obj.type == "note":
                 references = {item["standard_id"] for item in imported.get("objects", [])}

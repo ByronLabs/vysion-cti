@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from common.client import VysionClient, VysionError
+from common.evidence import VYSION_AUTHOR
 from common.imports import reconcile, submit, window_bounds, merge_rejected, MAX_BUNDLE_BYTES
 
 
@@ -136,6 +137,13 @@ class WalletRecoveryTests(unittest.TestCase):
         self.assertEqual(result["objects"], 2)
         self.assertEqual(result["detections"], 1)
         self.assertTrue(obj.helper.send_stix2_bundle.call_args.kwargs["update"])
+        bundle = json.loads(obj.helper.send_stix2_bundle.call_args.args[0])
+        for item in bundle["objects"]:
+            if item["type"] == "cryptocurrency-wallet":
+                self.assertEqual(item["x_opencti_created_by_ref"], VYSION_AUTHOR.id)
+                self.assertNotIn("created_by_ref", item)
+            elif item["type"] == "note":
+                self.assertEqual(item["created_by_ref"], VYSION_AUTHOR.id)
 
     def test_bad_record_does_not_block_healthy_import(self):
         obj = self.connector()

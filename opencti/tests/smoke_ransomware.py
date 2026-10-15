@@ -13,6 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from smoke_wallet_feed import completed
+from common.evidence import VYSION_AUTHOR
 
 spec = importlib.util.spec_from_file_location("ransomware", ROOT / "external-import/src/vysion-external.py")
 module = importlib.util.module_from_spec(spec)
@@ -47,6 +48,15 @@ if __name__ == "__main__":
             imported = reader(id=obj.id)
             if imported is None:
                 raise RuntimeError("Expected ransomware object not found in OpenCTI")
+            if (imported.get("createdBy") or {}).get("standard_id") != VYSION_AUTHOR.id:
+                raise RuntimeError("Ransomware object lacks Vysion authorship")
+            if obj.type == "incident":
+                imported = feed.helper.api.incident.read(id=obj.id)
+                if imported.get("incident_type") != "ransomware" or imported.get("source") != "Vysion":
+                    raise RuntimeError("Incident type/source not imported")
+                first_seen = datetime.fromisoformat(imported["first_seen"].replace("Z", "+00:00"))
+                if first_seen != module.VysionEI.event_datetime(candidate):
+                    raise RuntimeError("Incident first_seen differs from the source detection time")
             ids[obj.id] = imported["id"]
         if previous_ids is not None and ids != previous_ids:
             raise RuntimeError("Repeated ransomware import did not resolve to the same objects")

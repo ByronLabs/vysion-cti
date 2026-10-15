@@ -11,6 +11,7 @@ from stix2 import Bundle
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from common.client import VysionError
+from common.evidence import VYSION_AUTHOR
 
 spec = importlib.util.spec_from_file_location("ransomware", ROOT / "external-import/src/vysion-external.py")
 ransomware = importlib.util.module_from_spec(spec)
@@ -43,6 +44,10 @@ class RansomwareTests(unittest.TestCase):
         self.assertEqual(len(first), 11)
         incident = next(o for o in first if o.type == "incident")
         self.assertEqual(incident.external_references[0].external_id, raw["id"])
+        self.assertEqual(incident.incident_type, "ransomware")
+        self.assertEqual(incident.source, "Vysion")
+        self.assertEqual(incident.first_seen, normalized["date"])
+        self.assertNotIn("severity", incident)
         location = next(o for o in first if o.type == "location")
         self.assertEqual(location.x_opencti_location_type, "Country")
 
@@ -78,7 +83,13 @@ class RansomwareTests(unittest.TestCase):
         state = obj.helper.set_state.call_args.args[0]
         self.assertEqual(state["events_imported"], 1)
         bundle = json.loads(obj.helper.send_stix2_bundle.call_args.args[0])
-        self.assertEqual(len(bundle["objects"]), 5)
+        self.assertEqual(len(bundle["objects"]), 6)
+        author = next(item for item in bundle["objects"] if item["id"] == VYSION_AUTHOR.id)
+        self.assertEqual(author["name"], "Vysion")
+        self.assertNotIn("created_by_ref", author)
+        for item in bundle["objects"]:
+            if item["id"] != author["id"]:
+                self.assertEqual(item["created_by_ref"], author["id"])
         obj.helper.send_stix2_bundle.reset_mock()
         obj.run_once(state)
         obj.helper.send_stix2_bundle.assert_not_called()

@@ -2,7 +2,7 @@ import re
 import time
 from datetime import date, datetime, timedelta, timezone
 
-from stix2 import Bundle, ThreatActor, Relationship, Incident, Identity, Location
+from stix2 import ThreatActor, Relationship, Incident, Identity, Location
 from stix2.exceptions import STIXError
 import os
 import yaml
@@ -10,7 +10,7 @@ from pycti import OpenCTIConnectorHelper, get_config_variable
 from pycti import Identity as OpenCTIIdentity, ThreatActor as OpenCTIThreatActor, Location as OpenCTILocation
 
 from common.client import VysionClient, VysionError
-from common.evidence import stable_id, relation
+from common.evidence import stable_id, relation, evidence_bundle
 from common.imports import reconcile, submit, quarantine, window_bounds, is_quarantine_window, merge_rejected
 
 
@@ -185,10 +185,13 @@ class VysionEI:
         incident = Incident(
             id=stable_id("incident", f"ransomware:{event['event_id']}"),
             created=event["date"], modified=event["date"],
+            incident_type="ransomware", source="Vysion",
+            first_seen=event["date"], allow_custom=True,
             name=(
                 f"Vysion Feed: {event['ransomware_group']} Attack - {event['company']}"
             ),
-            description=event["info"] or "Ransomware detection reported by Vysion",
+            description=(event["info"] or "Ransomware detection reported by Vysion")
+            + "\n\nFirst seen is the Vysion detection time, not the confirmed start of the attack.",
             labels=["ransomware"],
             external_references=[
                 {
@@ -348,7 +351,7 @@ class VysionEI:
             else:
                 success_state["retry_window"] = {"start": window_start.isoformat(), "end": window_end.isoformat(), "mode": "quarantine" if quarantine_mode else "normal"}
             if objects:
-                bundle = Bundle(objects=list(objects.values()), allow_custom=True).serialize()
+                bundle = evidence_bundle(objects.values())
                 if checkpoint:
                     _, ready = submit(self.helper, state, bundle, success_state, work_id, self.update_existing_data)
                 else:

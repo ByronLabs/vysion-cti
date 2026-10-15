@@ -11,6 +11,7 @@ import requests
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from common.client import VysionClient, VysionError
+from common.evidence import VYSION_AUTHOR
 
 
 def load(name, path):
@@ -173,6 +174,11 @@ class ModelTests(unittest.TestCase):
                   "entity_type": "Email-Addr", "observable_value": "user@example.com"}
         self.assertIn("score unchanged", connector._process_message({"enrichment_entity": entity}))
         connector.helper.send_stix2_bundle.assert_called_once()
+        bundle = json.loads(connector.helper.send_stix2_bundle.call_args.args[0])
+        self.assertNotIn(entity["standard_id"], {item["id"] for item in bundle["objects"]})
+        notes = [item for item in bundle["objects"] if item["type"] == "note"]
+        self.assertTrue(notes)
+        self.assertTrue(all(item["created_by_ref"] == VYSION_AUTHOR.id for item in notes))
         connector.helper.api.stix_cyber_observable.update_field.assert_not_called()
 
     def test_wallet_feed_truncated_does_not_checkpoint(self):

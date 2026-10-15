@@ -1,6 +1,33 @@
 from uuid import NAMESPACE_URL, uuid5
 
-from stix2 import Note, Relationship
+import json
+
+from pycti import Identity as OpenCTIIdentity
+from stix2 import Bundle, Identity, Note, Relationship
+
+
+VYSION_AUTHOR = Identity(
+    id=OpenCTIIdentity.generate_id("Vysion", "organization"),
+    name="Vysion", identity_class="organization",
+    description="Provider of Vysion intelligence; not necessarily the original publisher of the evidence.",
+)
+
+
+def evidence_bundle(objects):
+    """Attribute connector-generated objects without altering their STIX IDs.
+
+    OpenCTI uses a custom author reference for cyber observables. Only generated
+    objects belong here: never reattribute the analyst's enrichment input.
+    """
+    authored = [VYSION_AUTHOR]
+    for obj in objects:
+        if obj.id == VYSION_AUTHOR.id:
+            continue
+        data = json.loads(obj.serialize())
+        field = "x_opencti_created_by_ref" if obj.type == "cryptocurrency-wallet" else "created_by_ref"
+        data[field] = VYSION_AUTHOR.id
+        authored.append(data)
+    return Bundle(objects=authored, allow_custom=True).serialize()
 
 
 def stable_id(kind, key):

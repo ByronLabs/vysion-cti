@@ -7,11 +7,10 @@ import base64
 from urllib.parse import quote, unquote, urlsplit
 
 import yaml
-from stix2 import Bundle
 from pycti import OpenCTIConnectorHelper, get_config_variable
 
 from common.client import VysionClient
-from common.evidence import evidence_note
+from common.evidence import evidence_note, evidence_bundle
 
 
 CHAINS = {"BTC", "ETH", "XMR", "XRP", "ZEC", "DOT", "BNB", "DASH"}
@@ -350,7 +349,7 @@ class VysionIE:
                     )
                     objects[note.id] = note
         if objects:
-            bundle = Bundle(objects=list(objects.values()), allow_custom=True).serialize()
+            bundle = evidence_bundle(objects.values())
             if len(bundle.encode()) > 2_000_000:
                 raise ValueError("Enrichment bundle size limit exceeded")
             self.helper.send_stix2_bundle(
