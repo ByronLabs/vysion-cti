@@ -121,6 +121,13 @@ celerybeat.pid
 
 # Environments
 .env
+.env.vysion
+/opencti/**/config.yml
+# Connector runtime helpers are source code, not generated Python libraries.
+!/opencti/external-import/src/lib/
+!/opencti/external-import/src/lib/*.py
+!/opencti/internal-enrichment/src/lib/
+!/opencti/internal-enrichment/src/lib/*.py
 .venv
 env/
 venv/

@@ -1,0 +1,85 @@
+services:
+  connector-vysion-external:
+    profiles: ["vysion"]
+    image: vysion-opencti-ransomware:local
+    build:
+      context: .
+      dockerfile: external-import/Dockerfile
+    env_file: .env
+    environment:
+      CONNECTOR_TYPE: EXTERNAL_IMPORT
+      CONNECTOR_NAME: Vysion Ransomware Feed
+      CONNECTOR_SCOPE: identity,incident,threat-actor,relationship,location,sector
+      CONNECTOR_CONFIDENCE_LEVEL: "70"
+      CONNECTOR_UPDATE_EXISTING_DATA: "true"
+      CONNECTOR_RUN_EVERY: ${CONNECTOR_RUN_EVERY:-1h}
+      VYSION_LOOKBACK_HOURS: ${VYSION_LOOKBACK_HOURS:-24}
+      CONNECTOR_LOG_LEVEL: info
+    networks: [opencti]
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m,uid=10001,gid=10001"]
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
+
+  connector-vysion-enrichment:
+    profiles: ["vysion"]
+    image: vysion-opencti-enrichment:local
+    build:
+      context: .
+      dockerfile: internal-enrichment/Dockerfile
+    env_file: .env
+    environment:
+      CONNECTOR_TYPE: INTERNAL_ENRICHMENT
+      CONNECTOR_NAME: Vysion Enrichment
+      CONNECTOR_SCOPE: Email-Addr,Url,Domain-Name,Hostname,Cryptocurrency-Wallet,User-Account,IPv4-Addr,IPv6-Addr,StixFile
+      CONNECTOR_CONFIDENCE_LEVEL: "70"
+      CONNECTOR_UPDATE_EXISTING_DATA: "true"
+      CONNECTOR_LOG_LEVEL: info
+      VYSION_ENABLE_IM: ${VYSION_ENABLE_IM:-true}
+      VYSION_ENABLE_LEAKS: ${VYSION_ENABLE_LEAKS:-false}
+      VYSION_MAX_TLP: ${VYSION_MAX_TLP:-TLP:GREEN}
+      VYSION_MAX_PAGES: ${VYSION_MAX_PAGES:-5}
+      VYSION_PAGE_SIZE: ${VYSION_PAGE_SIZE:-10}
+    networks: [opencti]
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m,uid=10001,gid=10001"]
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
+
+  connector-vysion-wallets:
+    profiles: ["vysion-wallets"]
+    image: vysion-opencti-wallets:local
+    build:
+      context: .
+      dockerfile: wallet-feed/Dockerfile
+    env_file: .env
+    environment:
+      CONNECTOR_TYPE: EXTERNAL_IMPORT
+      CONNECTOR_NAME: Vysion Wallet Detections
+      CONNECTOR_SCOPE: Cryptocurrency-Wallet,note
+      CONNECTOR_CONFIDENCE_LEVEL: "70"
+      CONNECTOR_LOG_LEVEL: info
+      VYSION_WALLET_PLATFORM: ${VYSION_WALLET_PLATFORM:-darknet}
+      VYSION_WALLET_INTERVAL_SECONDS: ${VYSION_WALLET_INTERVAL_SECONDS:-3600}
+    networks: [opencti]
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m,uid=10001,gid=10001"]
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
+
+networks:
+  opencti:
+    external: true
+    name: ${OPENCTI_DOCKER_NETWORK:-opencti_default}

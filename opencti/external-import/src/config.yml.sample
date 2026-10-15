@@ -1,0 +1,17 @@
+opencti:
+  url: http://opencti:8080
+  token: CHANGE_ME
+
+vysion:
+  api_url: https://api.vysion.ai
+  api_key: CHANGE_ME
+
+connector:
+  id: CHANGE_ME_UUID_V4
+  type: EXTERNAL_IMPORT
+  name: Vysion Ransomware Feed
+  scope: identity,incident,threat-actor,relationship,location,sector
+  confidence_level: 70
+  update_existing_data: true
+  run_every: 1h
+  log_level: info

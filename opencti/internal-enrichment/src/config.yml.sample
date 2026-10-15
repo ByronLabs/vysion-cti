@@ -1,0 +1,16 @@
+opencti:
+  url: http://opencti:8080
+  token: CHANGE_ME
+
+vysion:
+  api_url: https://api.vysion.ai
+  api_key: CHANGE_ME
+
+connector:
+  id: CHANGE_ME_UUID_V4
+  type: INTERNAL_ENRICHMENT
+  name: Vysion Enrichment
+  scope: Email-Addr,Url,Domain-Name,Hostname,Cryptocurrency-Wallet,User-Account,IPv4-Addr,IPv6-Addr,StixFile
+  confidence_level: 70
+  update_existing_data: true
+  log_level: info
