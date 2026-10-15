@@ -326,7 +326,12 @@ class VysionEI:
                     self.event_to_stix(mapped)
                     events.append(mapped)
                 except (ValueError, TypeError, STIXError) as error:
-                    quarantine(rejected, event, window_end.date().isoformat(), error)
+                    quarantine(
+                        rejected,
+                        event,
+                        self.event_datetime(event).astimezone(timezone.utc).date().isoformat(),
+                        error,
+                    )
             if max_events is not None:
                 events = events[:max_events]
             # One durable chunk per cycle; confirmed IDs avoid reprocessing it.
