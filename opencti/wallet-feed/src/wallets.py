@@ -133,9 +133,11 @@ class WalletFeed:
                         prospective = dict(objects)
                         for obj in mapped:
                             merge_wallet_object(prospective, obj)
-                        if len(prospective) > 500:
+                        from common.imports import MAX_BUNDLE_BYTES
+                        if len(prospective) > 500 or len(evidence_bundle(prospective.values()).encode("utf-8")) > MAX_BUNDLE_BYTES:
                             if not objects:
-                                raise VysionError("Single wallet detection exceeds chunk object limit")
+                                quarantine(rejected, hit, batch.isoformat(), VysionError("Single wallet detection exceeds chunk limits"))
+                                continue
                             remaining = True
                             break
                         seen += 1
