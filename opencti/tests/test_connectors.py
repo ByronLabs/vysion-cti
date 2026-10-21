@@ -82,7 +82,7 @@ class ClientTests(unittest.TestCase):
 
 class ModelTests(unittest.TestCase):
     def test_notes_stable_and_not_indicators(self):
-        hit = {"page": {"id": "doc1", "url": {"url": "example.onion", "networkProtocol": "http"}}}
+        hit = {"page": {"id": "doc1", "detectionDate": "2026-10-20T12:00:00Z", "url": {"url": "example.onion", "networkProtocol": "http"}}}
         target = "email-addr--b689de09-1d7c-5dc8-8e36-198e019f45a3"
         first = enrichment.VysionIE.make_evidence("documents", hit, target, [])
         second = enrichment.VysionIE.make_evidence("documents", hit, target, [])
@@ -93,11 +93,21 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(first.external_references[1].url, "http://example.onion")
         self.assertIn("| Field | Value |", first.content)
         self.assertIn("https://app.vysion.ai/document/doc1", first.content)
+        observation = enrichment.VysionIE.evidence_observation("documents", hit)
+        self.assertEqual(observation, ("documents", "2026-10-20T12:00:00.000Z"))
+        naive = enrichment.VysionIE.observed_at("2026-10-20T12:00:00")
+        self.assertEqual(naive, "2026-10-20T12:00:00.000Z")
 
     def test_same_title_different_pages_not_grouped(self):
         hits = [{"page": {"id": str(index), "pageTitle": "Same title", "url": {"url": url}}}
                 for index, url in enumerate(["https://example.com/a", "https://example.com/b", "", ""])]
         self.assertEqual(len(enrichment.VysionIE.document_groups(hits)), 4)
+        hit = {"page": {"id": "doc1", "url": {"url": "https://example.com/login?token=secret#top"}}}
+        path = enrichment.VysionIE.document_path_observable(hit, "example.com", [])
+        self.assertEqual(path.value, "https://example.com/login")
+        self.assertIsNone(enrichment.VysionIE.document_path_observable(hit, "other.example", []))
+        root = {"page": {"id": "doc2", "url": {"url": "https://example.com/"}}}
+        self.assertIsNone(enrichment.VysionIE.document_path_observable(root, "example.com", []))
 
     def test_leak_does_not_import_secrets(self):
         note = enrichment.VysionIE.make_evidence("leaks", {
@@ -169,7 +179,7 @@ class ModelTests(unittest.TestCase):
     def test_no_score_change(self):
         connector = self.connector()
         connector.client.search.side_effect = [([
-            {"page": {"id": "doc1", "pageTitle": "Example", "url": {"url": "https://example.com"}}}
+            {"page": {"id": "doc1", "pageTitle": "Example", "detectionDate": "2026-10-20T12:00:00Z", "url": {"url": "https://example.com"}}}
         ], False), ([], False)]
         connector.helper.api.note.read.return_value = None
         entity = {"standard_id": "email-addr--b689de09-1d7c-5dc8-8e36-198e019f45a3",
@@ -181,6 +191,10 @@ class ModelTests(unittest.TestCase):
         notes = [item for item in bundle["objects"] if item["type"] == "note"]
         self.assertTrue(notes)
         self.assertTrue(all(item["created_by_ref"] == VYSION_AUTHOR.id for item in notes))
+        observations = [item for item in bundle["objects"] if item["type"] == "observed-data"]
+        self.assertEqual(len(observations), 1)
+        self.assertEqual(observations[0]["object_refs"], [entity["standard_id"]])
+        self.assertEqual(observations[0]["created_by_ref"], VYSION_AUTHOR.id)
         connector.helper.api.stix_cyber_observable.update_field.assert_not_called()
 
     def test_wallet_feed_truncated_does_not_checkpoint(self):

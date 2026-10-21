@@ -3,13 +3,16 @@ import html
 import json
 import re
 import threading
-from urllib.parse import quote, urlsplit
+from datetime import datetime, timezone
+from urllib.parse import quote, urlsplit, urlunsplit
 
 import yaml
 from pycti import OpenCTIConnectorHelper, get_config_variable
+from stix2 import URL
 
 from common.client import VysionClient
-from common.evidence import evidence_note, evidence_bundle
+from common.evidence import (evidence_note, evidence_bundle, evidence_observed_data,
+                             evidence_observed_data_id, relation)
 
 
 CHAINS = {"BTC", "ETH", "XMR", "XRP", "ZEC", "DOT", "BNB", "DASH"}
@@ -112,7 +115,7 @@ class VysionIE:
         return queries
 
     @staticmethod
-    def make_evidence(source, hit, target, markings, matched_value=None):
+    def make_evidence(source, hit, target, markings, matched_value=None, observation_refs=()):
         rows = []
         app_url = "https://app.vysion.ai"
         source_url = None
@@ -188,7 +191,44 @@ class VysionIE:
         content = f"## Vysion evidence\n\n### {links}\n\n---\n\n### Evidence metadata\n\n{table}"
         if summary:
             content += f"\n\n---\n\n> {summary}"
-        return evidence_note(source, str(record_id), target, title, content, markings, references)
+        return evidence_note(source, str(record_id), target, title, content, markings, references,
+                             [target, *observation_refs])
+
+    @staticmethod
+    def observed_at(value):
+        """Return a canonical STIX timestamp, or None when Vysion supplied none.
+
+        Do not substitute the connector's current time: that would falsely say
+        when Vysion observed the source record and would make replayed evidence
+        non-deterministic. Vysion's timestamp fields are UTC even when the API
+        omits the offset, so normalize offset-less values to UTC.
+        """
+        if not isinstance(value, str) or not value.strip():
+            return None
+        try:
+            parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+    @classmethod
+    def evidence_observation(cls, source, hit):
+        """Return a source-record timestamp used by the target evidence timeline."""
+        if source == "documents":
+            record = hit.get("page") or {}
+            observed_at = cls.observed_at(record.get("detectionDate") or record.get("ingestionDate"))
+            record_id = record.get("id")
+        elif source == "leaks":
+            observed_at = cls.observed_at(hit.get("detectionDate"))
+            record_id = hit.get("id")
+        else:
+            observed_at = cls.observed_at(hit.get("detectionDate"))
+            record_id = f"{hit.get('platform', '')}:{hit.get('userId', '')}"
+        if not record_id or not observed_at:
+            return None
+        return source, observed_at
 
     @staticmethod
     def document_source(hit):
@@ -199,6 +239,37 @@ class VysionIE:
             protocol = data.get("networkProtocol", "http") if isinstance(data, dict) else "http"
             url = f"{protocol}://{url}"
         return url
+
+    @staticmethod
+    def document_path_observable(hit, domain, markings):
+        """Promote a source URL only when it is a path on the queried domain.
+
+        A document source is provenance, not automatically an IOC. For domain
+        enrichment it is also a useful, exact URL pivot when its hostname is
+        the queried domain and it identifies a non-root path. Queries and
+        fragments are deliberately excluded to avoid importing incidental
+        tokens from source URLs.
+        """
+        source_url = VysionIE.document_source(hit)
+        if not source_url:
+            return None
+        parsed = urlsplit(source_url)
+        expected_host = str(domain).rstrip(".").lower()
+        host = (parsed.hostname or "").rstrip(".").lower()
+        if parsed.scheme not in {"http", "https"} or host != expected_host:
+            return None
+        path = parsed.path or "/"
+        if path == "/":
+            return None
+        # URL credentials never belong in an OpenCTI observable.
+        if parsed.username or parsed.password:
+            return None
+        try:
+            port = f":{parsed.port}" if parsed.port else ""
+        except ValueError:
+            return None
+        value = urlunsplit((parsed.scheme.lower(), host + port, path, "", ""))
+        return URL(value=value, object_marking_refs=list(markings), allow_custom=True)
 
     @classmethod
     def document_groups(cls, hits):
@@ -215,7 +286,7 @@ class VysionIE:
         return list(groups.values())
 
     @classmethod
-    def grouped_document_note(cls, hits, target, markings, previous_content=""):
+    def grouped_document_note(cls, hits, target, markings, previous_content="", observation_refs=(), promoted_refs=()):
         if len(previous_content.encode()) > 1_000_000:
             raise ValueError("Existing capture note exceeds retention byte limit")
         first = hits[0]
@@ -265,8 +336,9 @@ class VysionIE:
         if len(content.encode()) > 1_000_000:
             raise ValueError("Capture note size limit reached; existing note preserved")
         return evidence_note("documents", "page-group:" + key, target,
-                             f"Vysion · {page.get('pageTitle') or 'Document captures'}",
-                             content, markings, references)
+                              f"Vysion · {page.get('pageTitle') or 'Document captures'}",
+                              content, markings, references,
+                              [target, *observation_refs, *promoted_refs])
 
     def _process_message(self, data):
         # One writer per process; keep this connector ID exclusive to one instance.
@@ -291,6 +363,9 @@ class VysionIE:
         if not queries:
             return "No enabled source supports this observable; enable leaks explicitly if needed"
         objects = {}
+        observations = []
+        evidence_references = []
+        observation_ref = evidence_observed_data_id(entity["standard_id"])
         truncated = []
         # Fail on source errors instead of reporting them as zero matches.
         # Collect first, then send one bundle tied to the listener's work.
@@ -300,7 +375,27 @@ class VysionIE:
                 truncated.append(source)
             if source == "documents":
                 for group in self.document_groups(hits):
-                    note = self.grouped_document_note(group, entity["standard_id"], markings)
+                    group_observations = [observation_ref]
+                    promoted_refs = []
+                    if entity["entity_type"] == "Domain-Name":
+                        for hit in group:
+                            url = self.document_path_observable(
+                                hit, entity.get("observable_value"), markings
+                            )
+                            if url:
+                                objects[url.id] = url
+                                link = relation(entity["standard_id"], url.id, markings=markings)
+                                objects[link.id] = link
+                                promoted_refs.append(url.id)
+                    for hit in group:
+                        observation = self.evidence_observation(source, hit)
+                        if observation:
+                            observations.append(observation)
+                    note = self.grouped_document_note(
+                        group, entity["standard_id"], markings,
+                        observation_refs=group_observations,
+                        promoted_refs=sorted(set(promoted_refs)),
+                    )
                     cache = getattr(self, "note_cache", {})
                     previous = objects.get(note.id)
                     previous_content = previous.content if previous else cache.get(note.id)
@@ -309,16 +404,32 @@ class VysionIE:
                         previous_content = previous.get("content", "") if previous else ""
                     if previous_content:
                         note = self.grouped_document_note(
-                            group, entity["standard_id"], markings, previous_content
+                            group, entity["standard_id"], markings, previous_content, group_observations,
+                            sorted(set(promoted_refs)),
                         )
                     objects[note.id] = note
+                    evidence_references.extend(note.external_references)
             else:
                 for hit in hits:
                     note = self.make_evidence(
                         source, hit, entity["standard_id"], markings,
                         matched_value=entity.get("observable_value"),
+                        observation_refs=[observation_ref],
                     )
                     objects[note.id] = note
+                    evidence_references.extend(note.external_references)
+                    observation = self.evidence_observation(source, hit)
+                    if observation:
+                        observations.append(observation)
+        if observations:
+            deduplicated_references = {}
+            for reference in evidence_references:
+                deduplicated_references[reference.serialize()] = reference
+            sources, timestamps = zip(*observations)
+            objects[observation_ref] = evidence_observed_data(
+                entity["standard_id"], min(timestamps), max(timestamps), len(observations),
+                sources, markings, deduplicated_references.values(),
+            )
         if objects:
             bundle = evidence_bundle(objects.values())
             if len(bundle.encode()) > 2_000_000:
@@ -328,10 +439,10 @@ class VysionIE:
                 update=True, work_id=self.helper.work_id,
             )
             cache = getattr(self, "note_cache", {})
-            for key, note in objects.items():
-                if "vysion:documents" in note.labels:
+            for key, obj in objects.items():
+                if obj.type == "note" and "vysion:documents" in obj.labels:
                     cache.pop(key, None)
-                    cache[key] = note.content
+                    cache[key] = obj.content
             retained = {}
             size = 0
             for key, content in reversed(list(cache.items())):
@@ -341,7 +452,11 @@ class VysionIE:
                 retained[key] = content
             self.note_cache = dict(reversed(list(retained.items())))
         # Preserve existing analyst scores: an indexed mention is not an IOC.
-        return f"Submitted {len(objects)} evidence notes; score unchanged. Limited sources: {', '.join(truncated) or 'none'}"
+        notes = sum(1 for obj in objects.values() if obj.type == "note")
+        promoted_urls = sum(1 for obj in objects.values() if obj.type == "url")
+        return (f"Submitted {notes} evidence notes and {1 if observations else 0} dated STIX observation timeline "
+                f"covering {len(observations)} captures; promoted {promoted_urls} domain URL paths; "
+                f"score unchanged. Limited sources: {', '.join(truncated) or 'none'}")
 
     def start(self):
         self.helper.listen(message_callback=self._process_message)
