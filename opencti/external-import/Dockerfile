@@ -1,4 +1,4 @@
-FROM python:3.13-alpine@sha256:2d9aefe2fef018a7eb2c13064c89c71929800fd2e5dccdbf52ea5da5bb8d929a AS base
+FROM python:3.15-alpine@sha256:2699b90f4d562a22e2dd076c82f964032f64814204bff36d271a54ba4cc2c7e2 AS base
 FROM base AS builder
 RUN apk --no-cache add build-base libffi-dev libxml2-dev libxslt-dev
 COPY external-import/requirements.lock /tmp/requirements.lock
